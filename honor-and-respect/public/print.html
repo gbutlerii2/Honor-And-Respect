@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Honor and Respect · Print kit</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+  @page { size: letter; margin: 0.5in; }
+  body { background: var(--color-surface); margin: 0; }
+  a { color: var(--color-accent-700); }
+  .bar { position: sticky; top: 0; z-index: 5; background: var(--color-bg); border-bottom: 1px solid var(--color-divider); padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+  .bar h1 { font-size: 22px; margin: 0; margin-right: auto; }
+  .bar label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .bar input[type=text] { min-height: 36px; width: 280px; }
+  .sheet { width: 7.5in; min-height: 10in; margin: 24px auto; background: #fff; box-shadow: var(--shadow-md); padding: 0.4in; box-sizing: border-box; position: relative; display: flex; flex-direction: column; }
+  .kick { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--color-accent-700); }
+  .cover h2 { font-size: 40px; font-weight: 400; margin: 8px 0 18px; }
+  .cover ol { font-size: 13.5px; line-height: 1.6; padding-left: 20px; }
+  .cover li { margin-bottom: 8px; }
+  .stone-page { align-items: center; justify-content: center; }
+  .stone { width: 4.6in; height: 7.4in; border: 3px solid #201f1d; border-radius: 2.3in 2.3in 6px 6px; display: flex; flex-direction: column; align-items: center; padding-top: 1.05in; gap: 0.16in; box-sizing: border-box; background: #fff; }
+  .cross { width: 6px; height: 0.95in; background: #201f1d; position: relative; margin-bottom: 0.22in; }
+  .cross i { position: absolute; top: 0.24in; left: -0.27in; width: 0.6in; height: 6px; background: #201f1d; }
+  .ln { font-family: "Lora", Georgia, serif; font-weight: 600; font-size: 25px; letter-spacing: .1em; color: #000; text-align: center; line-height: 1.15; }
+  .stone-foot { position: absolute; bottom: 0.35in; left: 0.4in; right: 0.4in; display: flex; justify-content: space-between; font-size: 10px; color: var(--color-neutral-700); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25in; }
+  .plaque { border: 1px solid #201f1d; border-radius: 4px; padding: 0.22in 0.2in 0.18in; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; break-inside: avoid; }
+  .plaque img { width: 1.65in; height: 1.65in; image-rendering: pixelated; }
+  .plaque .nm { font-family: var(--font-heading); font-weight: 600; font-size: 19px; line-height: 1.1; margin-top: 6px; }
+  .plaque .yr { font-family: var(--font-heading); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .plaque .lc { font-size: 10px; color: var(--color-neutral-700); }
+  .plaque .id { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-800); }
+  .plaque .cut { font-size: 9px; color: var(--color-neutral-600); margin-top: 2px; }
+  .sheet h3 { font-size: 22px; margin: 0 0 4px; }
+  .sheet .note { font-size: 11px; color: var(--color-neutral-700); margin-bottom: 0.2in; word-break: break-all; }
+  @media print {
+    body { background: #fff; }
+    .bar { display: none; }
+    .sheet { margin: 0; box-shadow: none; width: auto; min-height: 9.9in; padding: 0; page-break-after: always; break-after: page; }
+    .sheet:last-child { page-break-after: auto; break-after: auto; }
+    .stone-foot { left: 0; right: 0; bottom: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>Print kit</h1>
+  <label>QR codes open <input class="input" type="text" id="base"></label>
+  <button class="btn btn-secondary" id="apply">Update codes</button>
+  <button class="btn btn-primary" onclick="window.print()">Print</button>
+</div>
+<div id="out"></div>
+<script type="module" src="js/print.js"></script>
+</body>
+</html>

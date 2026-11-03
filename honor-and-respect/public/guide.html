@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Honor and Respect · User guide</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { background: var(--color-surface); }
+  main { max-width: 680px; margin: 0 auto; background: var(--color-bg); padding: 48px 28px 64px; box-shadow: var(--shadow-sm); }
+  a { color: var(--color-accent-700); }
+  a:hover { color: var(--color-accent-600); }
+  .kick { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--color-accent-700); }
+  h1 { font-size: 40px; font-weight: 400; margin: 8px 0 6px; }
+  .lede { font-size: 15.5px; line-height: 1.6; color: var(--color-neutral-800); text-align: justify; hyphens: auto; }
+  h2 { font-size: 26px; font-weight: 600; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--color-divider); }
+  h3 { font-size: 19px; margin: 22px 0 6px; }
+  p, li { font-size: 14.5px; line-height: 1.6; }
+  p { text-align: justify; hyphens: auto; }
+  ol, ul { padding-left: 22px; margin: 0 0 12px; }
+  li { margin-bottom: 5px; }
+  .toc { border-top: 1px solid var(--color-text); margin-top: 24px; }
+  .toc a { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--color-divider); text-decoration: none; color: var(--color-text); font-size: 14px; }
+  .toc a span:last-child { color: var(--color-neutral-700); font-variant-numeric: tabular-nums; }
+  .tip { border: 1px solid var(--color-accent); border-radius: var(--radius-md); padding: 12px 14px; font-size: 13.5px; line-height: 1.55; margin: 14px 0; }
+  .tip b { font-family: var(--font-heading); font-size: 15px; }
+  table.roles { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 10px 0 14px; }
+  table.roles th { text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-neutral-700); padding: 8px 8px 8px 0; border-bottom: 1px solid var(--color-text); }
+  table.roles td { padding: 9px 8px 9px 0; border-bottom: 1px solid var(--color-divider); vertical-align: top; }
+  .back { display: inline-block; margin-bottom: 18px; font-size: 14px; text-decoration: none; }
+  .foot { margin-top: 40px; font-size: 12px; color: var(--color-neutral-700); }
+  @media print { body { background: #fff; } main { box-shadow: none; padding: 0; max-width: none; } .back { display: none; } h2 { break-after: avoid; } .tip, table { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">‹ Back to the app</a>
+  <div class="kick">Honor and Respect</div>
+  <h1>User guide</h1>
+  <p class="lede">Honor and Respect identifies the people buried at Arlington National Cemetery and the Normandy American Cemetery. Point your phone at a headstone or a QR plaque and the app opens a memorial page with that person’s service details, biography, records and burial location. Anyone can read memorials. Signed-in users can help improve them.</p>
+
+  <div class="toc">
+    <a href="#start"><span>Getting started</span><span>1</span></a>
+    <a href="#scan"><span>Scanning a headstone or QR plaque</span><span>2</span></a>
+    <a href="#register"><span>Searching the register</span><span>3</span></a>
+    <a href="#memorial"><span>Reading a memorial page</span><span>4</span></a>
+    <a href="#saved"><span>Saved and visited graves</span><span>5</span></a>
+    <a href="#contribute"><span>Contributing and editing</span><span>6</span></a>
+    <a href="#admin"><span>For administrators</span><span>7</span></a>
+    <a href="#help"><span>Troubleshooting</span><span>8</span></a>
+  </div>
+
+  <h2 id="start">1. Getting started</h2>
+  <ol>
+    <li>Open <strong>honor-and-respect.com</strong> in Safari on your iPhone (or any browser).</li>
+    <li>To keep it on your home screen, tap <strong>Share → Add to Home Screen</strong>. It then opens like an app.</li>
+    <li>The bar along the bottom has five tabs: <strong>Scan</strong>, <strong>Register</strong>, <strong>Saved</strong>, <strong>Account</strong> and, for editors and admins, <strong>Admin</strong>.</li>
+  </ol>
+  <p>You don’t need an account to scan, search or read. Create one under <strong>Account</strong> if you want to suggest corrections or add information.</p>
+
+  <h2 id="scan">2. Scanning a headstone or QR plaque</h2>
+  <h3>Headstone: live scan</h3>
+  <ol>
+    <li>Open <strong>Scan</strong> and make sure <strong>Headstone</strong> is selected.</li>
+    <li>Tap <strong>Start live scan</strong> and allow camera access the first time.</li>
+    <li>Hold the phone straight in front of the stone so the whole inscription sits inside the frame. The words the app reads appear at the bottom of the screen.</li>
+    <li>When it’s confident, the camera pauses and shows the match. Tap <strong>Open memorial</strong>. Other possible matches are listed below it.</li>
+  </ol>
+  <div class="tip"><b>For a good read:</b> stand close, avoid glare and harsh shadows, and keep the phone still for a few seconds. Engraved white marble reads best in even, overcast light. If live scan gives up after 30 seconds, try <strong>Take photo</strong> instead.</div>
+  <h3>Headstone: photo</h3>
+  <p>Tap <strong>Take photo</strong> (or <strong>Library</strong> for a photo you already have). The app reads the inscription and lists the closest matches, each with a match percentage and the details that agree. If a letter was misread, correct the text in the box and the matches update as you type. If none fit, tap <strong>Search the register</strong>.</p>
+  <h3>QR plaque</h3>
+  <p>Point your iPhone’s regular <strong>Camera</strong> app at the code and tap the link that appears. Or, inside the app, choose <strong>Scan → QR code → Start camera</strong>. Either way, the memorial opens directly.</p>
+
+  <h2 id="register">3. Searching the register</h2>
+  <ul>
+    <li>Open <strong>Register</strong> and type the first letters of a <strong>surname</strong> (for example <em>Hask</em>). Results appear as you type.</li>
+    <li>If you know a memorial ID (printed on QR plaques, such as <em>NAC-D-14-22</em>), type it to jump straight there.</li>
+    <li>Narrow the list with the <strong>Cemetery</strong>, <strong>Conflict</strong>, <strong>Branch</strong> and <strong>Status</strong> filters. Tap <strong>Sort</strong> to switch between surname and date of death.</li>
+    <li>Tap <strong>Show more</strong> at the bottom for further results.</li>
+  </ul>
+
+  <h2 id="memorial">4. Reading a memorial page</h2>
+  <p>Each page begins with the cemetery and grave location, the person’s name, rank, branch and years. A tag shows the record’s status:</p>
+  <ul>
+    <li><strong>Verified:</strong> confirmed against an official source.</li>
+    <li><strong>Needs review:</strong> details still being checked.</li>
+    <li><strong>Unmatched:</strong> an unidentified burial, or not yet linked to a person.</li>
+  </ul>
+  <p>Below that is the headstone photograph. If there isn’t one yet, the page shows a drawing of the stone made from the transcribed inscription. Next come the details table (born, died, service number, unit, conflict, burial), the biography, the linked service record, awards, and two sections you can open with the arrow: <strong>Contributed media</strong> and <strong>Sources</strong>.</p>
+  <p>Three buttons stay at the bottom of the page:</p>
+  <ul>
+    <li><strong>Edit</strong> (or <strong>Suggest edit</strong>): improve the page. See section 6.</li>
+    <li><strong>Records:</strong> compare the page with the linked public record and search other archives (Arlington, ABMC, National Archives, VA).</li>
+    <li><strong>Location:</strong> the grave on a plot plan, with <strong>Walking directions</strong> in Apple Maps and a <strong>Mark visited</strong> button.</li>
+  </ul>
+  <p>At the top right, the clock icon opens the <strong>revision history</strong> and the bookmark <strong>saves</strong> the page.</p>
+
+  <h2 id="saved">5. Saved and visited graves</h2>
+  <p>The <strong>Saved</strong> tab lists the memorials you bookmarked. The <strong>Visited</strong> tab lists the graves you marked as visited from the Location screen. Both lists stay on your device.</p>
+
+  <h2 id="contribute">6. Contributing and editing</h2>
+  <h3>Create an account</h3>
+  <p>Go to <strong>Account → Create an account</strong>. Enter an email (or a username) and a password of at least six characters. New accounts start as <strong>Contributor</strong>.</p>
+  <h3>What each role can do</h3>
+  <table class="roles">
+    <thead><tr><th>Role</th><th>Can</th></tr></thead>
+    <tbody>
+      <tr><td>Reader</td><td>Scan, search and read. No account needed.</td></tr>
+      <tr><td>Contributor</td><td>Suggest edits, biographies, photo links and citations. An editor reviews each suggestion.</td></tr>
+      <tr><td>Editor</td><td>Publish edits directly, link records, approve or reject suggestions.</td></tr>
+      <tr><td>Admin</td><td>Everything editors can do, plus manage users, print QR plaques and load or remove data.</td></tr>
+    </tbody>
+  </table>
+  <h3>Suggest or make an edit</h3>
+  <ol>
+    <li>Open a memorial and tap <strong>Suggest edit</strong> (contributors) or <strong>Edit</strong> (editors).</li>
+    <li>Change the fields you know about. Less common fields such as burial details, the record link and status are under <strong>More fields</strong>.</li>
+    <li>Fill in <strong>Summary of changes</strong>: what you changed and how you know (a letter, an obituary, a unit history). This is required.</li>
+    <li>Tap <strong>Submit</strong> (sent for review) or <strong>Publish</strong> (live immediately).</li>
+  </ol>
+  <div class="tip"><b>Good practice:</b> add a citation for anything new, write biographies in plain factual sentences, and don’t include private information about living relatives.</div>
+  <p>Contributors can ask for editor access under <strong>Account → Request editor access</strong>.</p>
+
+  <h2 id="admin">7. For administrators</h2>
+  <p>Admins see an <strong>Admin</strong> tab with four sections. Editors see the first two.</p>
+  <h3>Listing</h3>
+  <ul>
+    <li>The full register, 100 records per page, with the total count. Search by surname and filter by status.</li>
+    <li>Open or <strong>Edit</strong> any record, <strong>+ New memorial</strong> to add one, or <strong>Delete</strong> (admins only, permanent).</li>
+    <li>Tick records and choose <strong>Print QR for selected</strong>, or tap <strong>QR</strong> on a single row. A print sheet of plaques opens, each with a code, name, years and location.</li>
+    <li><strong>Open public register</strong> shows the list the way visitors see it.</li>
+  </ul>
+  <h3>Review queue</h3>
+  <p>Every pending suggestion, showing the old and new value of each changed field and the contributor’s summary. Tap <strong>Approve</strong> to publish it or <strong>Reject</strong> to decline. Each decision is kept in the memorial’s revision history.</p>
+  <h3>Users</h3>
+  <ul>
+    <li><strong>Add a user:</strong> enter a username or email, an optional display name, a password and a role, then tap <strong>Create user</strong>. Give the person their password directly. A plain username signs in as <em>name@honor-and-respect.com</em>.</li>
+    <li>Change anyone’s role with the dropdown. Editor requests appear in the <strong>Request</strong> column.</li>
+  </ul>
+  <h3>Data &amp; QR</h3>
+  <ul>
+    <li><strong>Load sample data / Remove sample data:</strong> add or remove the 14 fictional test records. Real records are never touched.</li>
+    <li><strong>Rebuild search keys:</strong> run once after an app update, or if records are missing from search results.</li>
+    <li><strong>Print test kit:</strong> printable test headstones and QR plaques for trying out scanning. Set the web address at the top of the sheet before printing.</li>
+    <li><strong>Import JSON / Export:</strong> bulk add or back up records. Large imports, such as the full Arlington register, use the import script described in the project README.</li>
+  </ul>
+  <div class="tip"><b>Printing plaques:</b> print at 100% scale on card stock or weatherproof label sheets. Test-scan one plaque with a phone before printing a batch.</div>
+
+  <h2 id="help">8. Troubleshooting</h2>
+  <ul>
+    <li><strong>The camera doesn’t start:</strong> in iPhone Settings → Safari → Camera, choose Allow. The site must be opened over https.</li>
+    <li><strong>No match from a headstone:</strong> move closer, change angle to avoid glare, or use Take photo and correct the text by hand.</li>
+    <li><strong>A person isn’t in search results:</strong> check the spelling of the surname’s first letters and clear any filters.</li>
+    <li><strong>I can’t edit:</strong> sign in under Account. Readers can’t edit.</li>
+    <li><strong>A filtered search says it needs an index:</strong> an admin taps the link shown once, and the index builds in a few minutes.</li>
+  </ul>
+  <p class="foot">Burial information from Arlington National Cemetery is retrieved from ArlingtonCemetery.mil, which, with the U.S. Army, cannot vouch for the data or analyses derived from these data after the data have been retrieved. Community contributions are reviewed by volunteer editors.</p>
+</main>
+</body>
+</html>

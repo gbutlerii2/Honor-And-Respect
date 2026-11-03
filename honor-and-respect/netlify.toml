@@ -1,0 +1,23 @@
+# Used when the site is deployed from a Git repository.
+# For drag-and-drop deploys, drop the "public" folder; _redirects and _headers inside it do the same job.
+[build]
+  publish = "public"
+  command = ""
+
+[[redirects]]
+  from = "/m/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "camera=(self), microphone=(), geolocation=(self)"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"

@@ -1,0 +1,10 @@
+{
+  "indexes": [
+    { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "cemetery", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] },
+    { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "conflict", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] },
+    { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "branch", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] },
+    { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] },
+    { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "cemetery", "order": "ASCENDING" }, { "fieldPath": "branch", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] }
+  ],
+  "fieldOverrides": []
+}

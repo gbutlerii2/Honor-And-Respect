@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Honor and Respect</title>
+<meta name="description" content="Scan a headstone or QR plaque at Arlington National Cemetery or the Normandy American Cemetery to open a memorial page.">
+<script>(function(){var m=location.pathname.match(/^\/m\/([^\/?#]+)/);if(m){location.replace('/#/m/'+m[1]);}})();</script>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Honor and Respect">
+<meta name="theme-color" content="#f3f2f2">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <div id="banner" class="demo-banner" hidden>Demo mode: sample data stored in this browser. Add your Firebase settings to go live.</div>
+  <main id="view"><div class="loading">Loading…</div></main>
+  <nav id="tabs" class="tabbar" aria-label="Main"></nav>
+  <div id="toast" class="toast" role="status" hidden></div>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

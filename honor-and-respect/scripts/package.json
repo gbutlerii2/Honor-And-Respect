@@ -1,0 +1,16 @@
+{
+  "name": "honor-and-respect-import",
+  "private": true,
+  "type": "module",
+  "description": "One-time import of Arlington National Cemetery burial records into Firestore",
+  "scripts": {
+    "probe": "node import-anc.mjs probe",
+    "download": "node import-anc.mjs download",
+    "convert": "node import-anc.mjs convert",
+    "upload": "node import-anc.mjs upload"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
+  "engines": { "node": ">=18" }
+}

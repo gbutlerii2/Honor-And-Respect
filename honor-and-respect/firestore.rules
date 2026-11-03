@@ -1,0 +1,63 @@
+rules_version = '2';
+
+// Honor and Respect — Firestore security rules
+// Roles live in users/{uid}.role: contributor | editor | admin (signed-out visitors are readers).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function roleIn(roles) { return hasProfile() && profile().role in roles; }
+    // Owner account: always allowed to hold the admin role. Keep in step with OWNER_EMAIL in js/firebase-config.js.
+    function isOwner() { return signedIn() && request.auth.token.email == 'gbutlerii@honor-and-respect.com'; }
+    function isContributor() { return roleIn(['contributor', 'editor', 'admin']); }
+    function isEditor() { return roleIn(['editor', 'admin']); }
+    function isAdmin() { return roleIn(['admin']); }
+
+    // Public register: anyone can read; editors write; admins delete.
+    match /memorials/{id} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // Revision log + suggestion queue.
+    match /revisions/{revId} {
+      allow read: if true;
+      allow create: if isContributor()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.memorialId is string
+        && request.resource.data.summary is string
+        && request.resource.data.summary.size() > 0
+        && (request.resource.data.status == 'pending'
+            || (request.resource.data.status == 'published' && isEditor()));
+      // Editors approve or reject; only the review fields may change.
+      allow update: if isEditor()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt'])
+        && request.resource.data.status in ['published', 'rejected'];
+      allow delete: if isAdmin();
+    }
+
+    // User profiles. New users may only create themselves as contributor
+    // and can never change their own role. Admins manage everyone.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if (signedIn() && request.auth.uid == uid
+        && (request.resource.data.role == 'contributor'
+            || (isOwner() && request.resource.data.role == 'admin')))
+        || isAdmin();
+      allow update: if (signedIn() && request.auth.uid == uid
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
+        || (isOwner() && request.auth.uid == uid && request.resource.data.role == 'admin')
+        || isAdmin();
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+
+    // QR plaque registry (printed codes).
+    match /qrCodes/{code} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
