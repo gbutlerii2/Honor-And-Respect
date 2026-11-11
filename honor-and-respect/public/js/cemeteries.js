@@ -12,6 +12,10 @@ const WW1 = ['World War I'], WW2 = ['World War II'];
 
 export const CEMETERIES = {
   // ---- United States ----
+  // ABMC memorials to the missing in the United States (names only, no burials)
+  'east-coast-memorial': { name: 'East Coast Memorial', short: 'East Coast Memorial', country: 'United States', state: 'New York', place: 'Battery Park, New York City', operator: ABMC, wars: WW2 },
+  'honolulu-memorial': { name: 'Honolulu Memorial', short: 'Honolulu Memorial', country: 'United States', state: 'Hawaii', place: 'National Memorial Cemetery of the Pacific, Honolulu', operator: ABMC, wars: ['World War II', 'Korean War', 'Vietnam War'] },
+  'west-coast-memorial': { name: 'West Coast Memorial', short: 'West Coast Memorial', country: 'United States', state: 'California', place: 'The Presidio, San Francisco', operator: ABMC, wars: WW2 },
   arlington: { name: 'Arlington National Cemetery', short: 'Arlington', country: 'United States', state: 'Virginia', place: 'Arlington, Virginia', operator: 'U.S. Army', geo: [38.8783, -77.0687], plots: ['2', '12', '18', '21', '27', '30', '34', '54', '59', '60'], top: 'Memorial Amphitheater', gate: 'Welcome Center' },
 
   // ---- ABMC overseas cemeteries ----
