@@ -1,6 +1,7 @@
 import { firebaseConfig, SITE_URL, ENABLE_GOOGLE_SIGNIN, OWNER_EMAIL, USERNAME_DOMAIN } from './firebase-config.js';
 const toEmail = s => { s = String(s || '').trim().toLowerCase(); return s.includes('@') ? s : `${s}@${USERNAME_DOMAIN}`; };
 import { SAMPLE, CEMETERIES, STATUS, view } from './data.js';
+import { US, cemCountries, cemStates, cemIn, cemGroups } from './cemeteries.js';
 import { rankCandidates, guessSurname } from './match.js';
 import { LocalAPI, makeFireAPI } from './api.js';
 
@@ -47,13 +48,52 @@ function setCem(k) { try { localStorage.setItem(CEM_KEY, k); } catch { } reg.cem
 const cemName = () => (CEMETERIES[getCem()] || {}).name || '';
 // Scan matches are limited to the selected cemetery, so a stone in Normandy never matches an Arlington record.
 const scoped = list => { const n = cemName(); return n ? list.filter(m => m.cemetery === n) : list; };
-const cemOptions = cur => Object.entries(CEMETERIES).map(([k, c]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+// Cascading picker: Select Country, then (United States only) Select State, then Select Cemetery.
+// Used on the welcome page and in the "change" pop-up. `cur` is the selected cemetery key, if any.
+const optList = (items, cur, ph) => `<option value="" ${cur ? '' : 'selected'} disabled>${ph}</option>` + items.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`).join('');
+function cascadeHTML(id, cur) {
+  const c = CEMETERIES[cur] || {};
+  return `<div class="cascade" id="${id}">
+    <div class="field"><label for="${id}-country">Select Country</label><select class="input" id="${id}-country" data-c="country">${optList(cemCountries().map(x => [x, x]), c.country || '', 'Choose a country…')}</select></div>
+    <div class="field" data-wrap="state" hidden><label for="${id}-state">Select State</label><select class="input" id="${id}-state" data-c="state"></select></div>
+    <div class="field"><label for="${id}-cem">Select Cemetery</label><select class="input" id="${id}-cem" data-c="cem" disabled></select></div>
+  </div>`;
+}
+// Wires a cascade rendered by cascadeHTML. onPick(key) runs whenever the chosen cemetery changes ('' when none).
+function wireCascade(id, cur, onPick) {
+  const root = $('#' + id), [cs, ss, ks] = ['country', 'state', 'cem'].map(k => root.querySelector(`[data-c="${k}"]`));
+  const sw = root.querySelector('[data-wrap="state"]');
+  const fillCems = key => {
+    const country = cs.value, needState = country === US;
+    const list = !country || (needState && !ss.value) ? [] : cemIn(country, needState ? ss.value : '');
+    if (!key && list.length === 1) key = list[0][0]; // only one cemetery there: pick it
+    ks.innerHTML = optList(list.map(([k, c]) => [k, c.name]), key, !country ? 'Choose a country first' : needState && !ss.value ? 'Choose a state first' : 'Choose a cemetery…');
+    ks.disabled = !list.length;
+    onPick(ks.value || '');
+  };
+  const fillStates = (state, key) => {
+    const isUS = cs.value === US;
+    sw.hidden = !isUS;
+    if (isUS) {
+      const states = cemStates(US);
+      if (!state && states.length === 1) state = states[0];
+      ss.innerHTML = optList(states.map(x => [x, x]), state, 'Choose a state…');
+    } else ss.innerHTML = '';
+    fillCems(key);
+  };
+  cs.onchange = () => fillStates('', '');
+  ss.onchange = () => fillCems('');
+  ks.onchange = () => onPick(ks.value || '');
+  const c = CEMETERIES[cur];
+  fillStates(c ? c.state : '', c ? cur : '');
+  return cs;
+}
 // Pop-up picker used by the "change" link on the scan page.
 function openCemPicker(after) {
   const old = $('#cemModal'); if (old) old.parentNode.removeChild(old);
   document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="cemModal" role="dialog" aria-modal="true" aria-labelledby="cemModalT"><div class="modal-card">
     <div class="kicker">Honor and Respect</div><h2 id="cemModalT">Select cemetery</h2>
-    <select class="input" id="cemModalSel" aria-label="Cemetery">${cemOptions(getCem())}</select>
+    ${cascadeHTML('cemModalPick', getCem())}
     <div class="btnrow"><button class="btn btn-secondary" id="cemCancel" type="button">Cancel</button><button class="btn btn-primary" id="cemOk" type="button">Select</button></div></div></div>`);
   const modal = $('#cemModal');
   const onKey = e => { if (e.key === 'Escape') close(); };
@@ -61,8 +101,10 @@ function openCemPicker(after) {
   document.addEventListener('keydown', onKey);
   modal.onclick = e => { if (e.target === modal) close(); };
   $('#cemCancel').onclick = close;
-  $('#cemOk').onclick = () => { const k = $('#cemModalSel').value; close(); if (k !== getCem()) { setCem(k); toast(CEMETERIES[k].name + ' selected'); } if (after) after(); };
-  $('#cemModalSel').focus();
+  let picked = '';
+  const first = wireCascade('cemModalPick', getCem(), k => { picked = k; $('#cemOk').disabled = !k; });
+  $('#cemOk').onclick = () => { if (!picked) return; close(); if (picked !== getCem()) { setCem(picked); toast(CEMETERIES[picked].name + ' selected'); } if (after) after(); };
+  first.focus();
 }
 function loadScript(src) { return new Promise((res, rej) => { if ($(`script[src="${src}"]`)) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(s); }); }
 const backBtn = (label = 'Back') => `<button class="back" data-back>${ICON.back}${esc(label)}</button>`;
@@ -153,8 +195,7 @@ function viewWelcome() {
     <div class="pad welcome-body">
       <h1 class="welcome-title">Honor and Respect</h1>
       <div class="cem-pick">
-        <label for="cemSel">Select Cemetery</label>
-        <select class="input" id="cemSel"><option value="" ${cur ? '' : 'selected'} disabled>Choose a cemetery…</option>${cemOptions(cur)}</select>
+        ${cascadeHTML('cemPick', cur)}
         <button class="btn btn-primary btn-block big" id="cemGo" ${cur ? '' : 'disabled'}>Continue</button>
       </div>
       <h4 class="sec">About</h4>
@@ -168,9 +209,10 @@ function viewWelcome() {
   const img = $('#heroImg');
   img.onload = () => { img.hidden = false; $('.hero-art').style.display = 'none'; if (HERO.credit) { const c = $('#heroCredit'); c.textContent = HERO.credit; c.hidden = false; } };
   img.src = HERO.src;
-  const sel = $('#cemSel'), go = $('#cemGo');
-  sel.onchange = () => { go.disabled = !sel.value; };
-  go.onclick = () => { if (!sel.value) return; setCem(sel.value); if (/^#\/?scan$/.test(location.hash)) route(); else location.hash = '#/scan'; };
+  const go = $('#cemGo');
+  let picked = '';
+  wireCascade('cemPick', cur, k => { picked = k; go.disabled = !k; });
+  go.onclick = () => { if (!picked) return; setCem(picked); if (/^#\/?scan$/.test(location.hash)) route(); else location.hash = '#/scan'; };
 }
 
 // ---------- scan ----------
@@ -375,10 +417,11 @@ function indexHelp(e, el) {
 }
 function viewRegister(params) {
   if (params.has('q')) reg.q = params.get('q');
-  const sel = (k, label) => `<select class="input" data-f="${k}"><option value="">${label}: All</option>${FILTER_OPTS[k].map(v => `<option value="${esc(v)}" ${reg[k] === v ? 'selected' : ''}>${esc(k === 'status' ? STATUS[v][0] : v)}</option>`).join('')}</select>`;
+  const opt = (k, v) => `<option value="${esc(v)}" ${reg[k] === v ? 'selected' : ''}>${esc(k === 'status' ? STATUS[v][0] : v)}</option>`;
+  const sel = (k, label) => `<select class="input" data-f="${k}"><option value="">${label}: All</option>${k === 'cemetery' ? cemGroups().map(([g, names]) => `<optgroup label="${esc(g)}">${names.map(v => opt(k, v)).join('')}</optgroup>`).join('') : FILTER_OPTS[k].map(v => opt(k, v)).join('')}</select>`;
   set(`<div class="pad" style="padding-bottom:0">
       <h1 class="display" style="margin-top:12px">Register</h1>
-      <div class="muted small">${esc(FILTER_OPTS.cemetery.join(' & '))}</div>
+      <div class="muted small">${esc(reg.cemetery || FILTER_OPTS.cemetery.length + ' cemeteries')}</div>
       <div class="searchbox">${ICON.search.replace(/23/g, '17')}<input class="input" id="q" type="search" value="${esc(reg.q)}" placeholder="Surname, or a memorial ID" autocomplete="off" autocapitalize="none"></div>
     </div>
     <div class="filters">${sel('cemetery', 'Cemetery')}${sel('conflict', 'Conflict')}${sel('branch', 'Branch')}${sel('status', 'Status')}</div>
@@ -489,10 +532,10 @@ async function viewLocation(id) {
   const m = await api.getMemorial(id); if (!m) return viewMemorial(id);
   const v = view(m), c = CEMETERIES[m.cemeteryKey];
   const visited = !!store.get('har-visited')[id];
-  const g = m.geo || (c ? { lat: c.geo[0], lng: c.geo[1] } : null);
+  const g = m.geo || (c && c.geo ? { lat: c.geo[0], lng: c.geo[1] } : null);
   set(`<header class="topbar">${backBtn('Memorial')}</header><div class="pad">
     <div class="kicker">Grave location</div><h1 class="display" style="font-size:30px">${esc(m.cemetery)}</h1>
-    ${c ? `<div class="plan"><div class="plan-top">${esc(c.top)}</div><div class="plots">${c.plots.map(p => `<div class="${String(p) === String(m.section) ? 'on' : ''}">${p}</div>`).join('')}</div><div class="plan-you"><i></i>You are here · ${esc(c.gate)}</div></div>` : ''}
+    ${c && c.plots ? `<div class="plan"><div class="plan-top">${esc(c.top)}</div><div class="plots">${c.plots.map(p => `<div class="${String(p) === String(m.section) ? 'on' : ''}">${p}</div>`).join('')}</div><div class="plan-you"><i></i>You are here · ${esc(c.gate)}</div></div>` : ''}
     <div class="card" style="margin-top:14px;gap:6px"><div class="card-title" style="font-size:20px">${esc(v.name)}</div><div class="small">${esc(m.location)}</div>
       <div class="btnrow">${g ? `<a class="btn btn-primary" href="https://maps.apple.com/?daddr=${g.lat},${g.lng}&dirflg=w" target="_blank" rel="noopener">Walking directions</a>` : ''}<button class="btn btn-secondary" id="visit">${visited ? 'Visited ✓' : 'Mark visited'}</button></div></div>
     <p class="small muted" style="margin-top:12px">Plot plan is schematic. Directions use the grave’s stored coordinates.</p>
@@ -508,7 +551,7 @@ const FIELDS = [
   ['birthplace', 'Birthplace'], ['enteredFrom', 'Entered service from'], ['conflict', 'Conflict'],
   ['photoUrl', 'Headstone photo URL', 'url'], ['biography', 'Biography', 'textarea'], ['sources', 'Sources (one per line)', 'lines'],
   ['awards', 'Awards (one per line)', 'lines'], ['inscription', 'Inscription (one line per row)', 'lines'], ['mediaUrls', 'Contributed media URLs (one per line)', 'lines'],
-  ['cemetery', 'Cemetery'], ['cemeteryKey', 'Cemetery key (normandy / brittany / arlington)'], ['location', 'Burial location (display)'], ['section', 'Section or plot'], ['row', 'Row'], ['site', 'Site or grave'],
+  ['cemetery', 'Cemetery'], ['cemeteryKey', 'Cemetery key (e.g. normandy, arlington; see js/cemeteries.js)'], ['location', 'Burial location (display)'], ['section', 'Section or plot'], ['row', 'Row'], ['site', 'Site or grave'],
   ['geo.lat', 'Latitude', 'number'], ['geo.lng', 'Longitude', 'number'],
   ['record.source', 'Record source'], ['record.externalId', 'Record ID'], ['record.url', 'Record URL', 'url'], ['record.status', 'Record status', 'select:linked,possible,none'],
   ['status', 'Register status', 'select:verified,needs_review,unmatched']
@@ -669,7 +712,7 @@ async function viewAdmin(tab, params) {
     const total = await api.count().catch(() => null);
     box.className = '';
     box.innerHTML = `<div class="toolbar"><div class="searchbox" style="flex:1;min-width:220px;margin:0">${ICON.search.replace(/23/g, '17')}<input class="input" id="aq" type="search" value="${esc(adm.q)}" placeholder="Search ${total != null ? total.toLocaleString() + ' records ' : ''}by surname"></div>
-      <select class="input" id="acem" style="width:auto" aria-label="Cemetery"><option value="">All cemeteries</option>${Object.values(CEMETERIES).map(c => `<option value="${esc(c.name)}" ${adm.cemetery === c.name ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+      <select class="input" id="acem" style="width:auto" aria-label="Cemetery"><option value="">All cemeteries</option>${cemGroups().map(([g, names]) => `<optgroup label="${esc(g)}">${names.map(n => `<option value="${esc(n)}" ${adm.cemetery === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select>
       <select class="input" id="ast" style="width:auto"><option value="">All statuses</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${adm.status === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>
       ${isAdmin() ? '<a class="btn btn-secondary" href="#/admin/new">+ New memorial</a><button class="btn btn-primary" id="printSel" disabled>Print QR for selected</button>' : ''}
       <a class="btn btn-ghost" href="#/register">Open public register</a></div>

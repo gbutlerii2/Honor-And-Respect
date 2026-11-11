@@ -218,6 +218,11 @@ body.splash #app { padding-bottom: env(safe-area-inset-bottom); }
 .cem-pick { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-lg); }
 .cem-pick label { font-family: var(--font-heading); font-size: 20px; font-weight: 600; }
 .cem-pick .btn { margin-top: 2px; }
+.cascade { display: flex; flex-direction: column; gap: 10px; }
+.cascade .field { display: flex; flex-direction: column; gap: 4px; }
+.cascade .field[hidden] { display: none; }
+.cascade label { font-family: var(--font-heading); font-size: 17px; font-weight: 600; }
+.cascade select:disabled { opacity: .6; }
 
 /* ---------- selected cemetery on the scan page ---------- */
 .cem-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: baseline; gap: 8px; margin: 0 0 10px; }
