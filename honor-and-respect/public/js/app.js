@@ -151,8 +151,7 @@ function viewWelcome() {
   set(`<section class="welcome">
     <figure class="hero">${heroArt()}<img id="heroImg" alt="${esc(HERO.alt)}" hidden><figcaption id="heroCredit" hidden></figcaption></figure>
     <div class="pad welcome-body">
-      <div class="kicker">Honor and Respect</div>
-      <h1 class="display">Every headstone is a life.</h1>
+      <h1 class="welcome-title">Honor and Respect</h1>
       <div class="cem-pick">
         <label for="cemSel">Select Cemetery</label>
         <select class="input" id="cemSel"><option value="" ${cur ? '' : 'selected'} disabled>Choose a cemetery…</option>${cemOptions(cur)}</select>
