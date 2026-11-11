@@ -258,7 +258,10 @@ export function toMemorial(r, retrieved) {
     officialCitation: `American Battle Monuments Commission burial record ${id}${clean(r.service_number) ? ` (service number ${clean(r.service_number)})` : ''}, retrieved ${retrieved} from weremember.abmc.gov. Source: American Battle Monuments Commission.`,
     importedFrom: 'abmc', importedAt: retrieved
   };
-  if (!hasDetail) { for (const k of ['deathDate', 'deathYear', 'section', 'row', 'site', 'location', 'missing', 'awards']) delete m[k]; }
+  // Before "details" has run, the grave fields are blank placeholders (missing stays null = not known yet).
+  // They are filled in by a later details → convert → upload, which merges over these records.
+  if (!hasDetail) Object.assign(m, { deathDate: '', deathYear: null, section: '', row: '', site: '', location: MISSING_ONLY.has(src.slug) ? 'Tablets of the Missing' : '', missing: MISSING_ONLY.has(src.slug) ? true : null, awards: [] });
+  m.detailsFetched = hasDetail;
   m.searchName = [m.fullName, m.givenName, m.middleName, m.surname, m.unit, m.serviceNumber, m.location, m.id].filter(Boolean).join(' ').toLowerCase();
   return m;
 }
