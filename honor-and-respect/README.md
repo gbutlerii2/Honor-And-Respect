@@ -93,6 +93,7 @@ QR codes encode `https://<site>/m/<ID>`. The address field at the top of the pri
 | birthDate, birthYear, deathDate, deathYear | string, number | Headstone, ANC Explorer, ABMC |
 | birthplace, enteredFrom, conflict | string | NARA AAD, ABMC |
 | cemetery, cemeteryKey, location, section, row, site | string | ANC Explorer, ABMC |
+| missing | boolean | ABMC: name is on the Tablets/Walls of the Missing, no grave |
 | geo { lat, lng } | number | ANC Explorer; surveyed for Normandy |
 | inscription[], awards[], sources[], mediaUrls[] | string[] | Headstone, ABMC, contributors |
 | biography, photoUrl | string | Contributors |
@@ -132,6 +133,32 @@ npm run upload       # the rest; re-run to resume if interrupted
 **What each record gets:** name, rank, branch, dates of birth, death and interment, relationship (for family members), section/row/site or columbarium location, the ANC record ID, and the citation that Arlington's terms require. IDs look like `ANC-<record number>`, so QR plaques stay stable if the import is re-run. Re-running only refreshes the official fields; biographies, photos, sources and status that people added in the app are kept.
 
 **Not included in Arlington's data:** unit, service number, awards and biography. These come from contributors or later record links. Conflict is filled in only when the year of death falls within a war's years.
+
+## Importing ABMC overseas cemeteries (Normandy, Brittany, or all ~224,600 records)
+`scripts/import-abmc.mjs` pulls records from ABMC's burial search at weremember.abmc.gov. ABMC has no bulk download, but its search page reads from a public JSON catalog service, and the script calls that same service slowly, one request at a time. ABMC's website content is public domain unless marked, and ABMC asks to be cited; every record gets that citation.
+
+The service only answers inside a browser session, so the script opens the site in a hidden browser (Playwright) and makes its requests from there.
+
+**Setup:** the same Node.js, Blaze plan, service account and index steps as the Arlington import above. Then, inside `honor-and-respect/scripts`:
+```
+npm install
+npx playwright install chromium
+```
+
+**Run it.** Every step can be re-run and picks up where it stopped. `--cemetery` takes cemetery slugs from `public/js/cemeteries.js` and defaults to `normandy,brittany`; use `--cemetery all` for every ABMC cemetery and memorial.
+```
+node import-abmc.mjs probe                         # counts per cemetery + one full record
+node import-abmc.mjs list                          # names, rank, unit, service no., state, war: 500 per request, a few minutes
+node import-abmc.mjs details --limit 50            # try a few detail records first
+node import-abmc.mjs details                       # plot / row / grave, date of death, awards: one request per soldier
+node import-abmc.mjs convert                       # builds data/abmc/memorials.ndjson
+node import-abmc.mjs upload --limit 500            # test a small batch, check it in the app
+node import-abmc.mjs upload                        # the rest
+```
+
+**How long it takes:** `list` is quick (Normandy + Brittany is about 32 requests; every cemetery is about 450). `details` is one request per soldier, about 2 seconds apart: Normandy + Brittany (about 15,850 names) takes 8–9 hours, and every ABMC site (about 224,600) would take about 5 days, so run it cemetery by cemetery, overnight. You can `convert` and `upload` after `list` alone; those records just lack the grave location and date of death until `details` has run and you convert and upload again (delete `data/abmc/upload-state.json` first).
+
+**What each record gets:** name, rank, branch, unit and division, service number, state entered service from, war, cemetery, plot/row/grave (or "Tablets of the Missing" with `missing: true`), date of death, awards, and the ABMC citation. IDs look like `ABMC-<ABMC record id>`, so re-running keeps QR plaques stable and keeps anything added in the app.
 
 ## Before scaling to the full register (~400,000 records)
 Search now runs in the database rather than on the phone. The register searches by surname prefix with filters, scans look up only the surnames read from the stone, and the admin listing pages through 100 records at a time. That works for the full Arlington import. For typo-tolerant full-text search later (e.g. finding "Haskens" when someone types "Haskins"), add Algolia or Typesense, both available as Firebase extensions.
