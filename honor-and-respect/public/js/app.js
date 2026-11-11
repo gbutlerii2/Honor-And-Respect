@@ -164,8 +164,7 @@ function viewWelcome() {
         <p>The register is a shared effort. Families, historians and volunteers can add photographs, biographies and sources, and an editor reviews every change before it appears, so each record stays accurate and respectful.</p>
         <p>Use it to plan a visit, to find a relative, or simply to pause at a stone and learn who lies there. Choose a cemetery above to begin.</p>
       </div>
-      <ul class="cem-list">${Object.values(CEMETERIES).map(c => `<li><span>${esc(c.name)}</span><span class="small muted">${esc(c.place || '')}</span></li>`).join('')}</ul>
-      <div class="btnrow center"><a class="linkbtn" href="#/register">Search the register</a><a class="linkbtn" href="guide.html">User guide</a></div>
+      <div class="btnrow center"><a class="linkbtn" href="#/register">Search the register</a></div>
     </div></section>`);
   const img = $('#heroImg');
   img.onload = () => { img.hidden = false; $('.hero-art').style.display = 'none'; if (HERO.credit) { const c = $('#heroCredit'); c.textContent = HERO.credit; c.hidden = false; } };
