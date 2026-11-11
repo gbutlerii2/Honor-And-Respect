@@ -1,0 +1,9 @@
+# Netlify config for Git-based deploys from this repository.
+# The website is the static folder honor-and-respect/public (no build step).
+# Routing and security headers come from public/_redirects and public/_headers,
+# which Netlify publishes along with the site.
+[build]
+  publish = "honor-and-respect/public"
+  command = ""
+
+# Deploy previews and branch deploys use the same settings.
