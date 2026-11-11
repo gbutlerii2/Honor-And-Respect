@@ -40,6 +40,30 @@ const loading = () => set('<div class="loading">Loading…</div>');
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2600); }
 const store = { get: k => { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch { return {}; } }, set: (k, v) => localStorage.setItem(k, JSON.stringify(v)) };
+// ---------- selected cemetery (kept on this device) ----------
+const CEM_KEY = 'har-cemetery';
+function getCem() { try { const k = localStorage.getItem(CEM_KEY); return CEMETERIES[k] ? k : ''; } catch { return ''; } }
+function setCem(k) { try { localStorage.setItem(CEM_KEY, k); } catch { } reg.cemetery = CEMETERIES[k] ? CEMETERIES[k].name : ''; reg.limit = 50; }
+const cemName = () => (CEMETERIES[getCem()] || {}).name || '';
+// Scan matches are limited to the selected cemetery, so a stone in Normandy never matches an Arlington record.
+const scoped = list => { const n = cemName(); return n ? list.filter(m => m.cemetery === n) : list; };
+const cemOptions = cur => Object.entries(CEMETERIES).map(([k, c]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+// Pop-up picker used by the "change" link on the scan page.
+function openCemPicker(after) {
+  const old = $('#cemModal'); if (old) old.parentNode.removeChild(old);
+  document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="cemModal" role="dialog" aria-modal="true" aria-labelledby="cemModalT"><div class="modal-card">
+    <div class="kicker">Honor and Respect</div><h2 id="cemModalT">Select cemetery</h2>
+    <select class="input" id="cemModalSel" aria-label="Cemetery">${cemOptions(getCem())}</select>
+    <div class="btnrow"><button class="btn btn-secondary" id="cemCancel" type="button">Cancel</button><button class="btn btn-primary" id="cemOk" type="button">Select</button></div></div></div>`);
+  const modal = $('#cemModal');
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  const close = () => { if (modal.parentNode) modal.parentNode.removeChild(modal); document.removeEventListener('keydown', onKey); };
+  document.addEventListener('keydown', onKey);
+  modal.onclick = e => { if (e.target === modal) close(); };
+  $('#cemCancel').onclick = close;
+  $('#cemOk').onclick = () => { const k = $('#cemModalSel').value; close(); if (k !== getCem()) { setCem(k); toast(CEMETERIES[k].name + ' selected'); } if (after) after(); };
+  $('#cemModalSel').focus();
+}
 function loadScript(src) { return new Promise((res, rej) => { if ($(`script[src="${src}"]`)) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(s); }); }
 const backBtn = (label = 'Back') => `<button class="back" data-back>${ICON.back}${esc(label)}</button>`;
 function goBack(fallback = '#/register') { if (history.length > 1) history.back(); else location.hash = fallback; }
@@ -47,7 +71,7 @@ function needAuth(msg) { toast(msg); location.hash = '#/account'; }
 function fmtDate(t) { if (!t) return ''; const d = new Date(t); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
 function rowHTML(m) {
   const v = view(m);
-  return `<a class="row" href="#/m/${encodeURIComponent(m.id)}"><div class="t"><span class="n">${esc(v.name)}</span><span class="y">${esc(v.lifespan)}</span></div><div class="r">${esc(v.rankLine)}</div><div class="b"><span>${esc((CEMETERIES[m.cemeteryKey] ? (m.cemeteryKey === 'normandy' ? 'Normandy' : 'Arlington') : m.cemetery) || '')} · ${esc(m.location || '')}</span><span class="tag sm ${v.statusClass}">${v.statusLabel}</span></div></a>`;
+  return `<a class="row" href="#/m/${encodeURIComponent(m.id)}"><div class="t"><span class="n">${esc(v.name)}</span><span class="y">${esc(v.lifespan)}</span></div><div class="r">${esc(v.rankLine)}</div><div class="b"><span>${esc((CEMETERIES[m.cemeteryKey] ? CEMETERIES[m.cemeteryKey].short : m.cemetery) || '')} · ${esc(m.location || '')}</span><span class="tag sm ${v.statusClass}">${v.statusLabel}</span></div></a>`;
 }
 function stoneHTML(lines) {
   return `<div class="stone"><div class="cross"><i></i></div>${lines.map(l => `<div class="ln">${esc(l)}</div>`).join('')}</div>`;
@@ -69,15 +93,19 @@ function renderTabs(h) {
 let stopCamera = () => { };
 async function route() {
   stopCamera(); stopCamera = () => { };
-  const raw = location.hash.replace(/^#\/?/, '').split('#')[0] || 'scan';
+  let raw = location.hash.replace(/^#\/?/, '').split('#')[0] || 'scan';
+  // First visit (no cemetery chosen yet): the scan page starts at the welcome page.
+  if (raw.split('?')[0] === 'scan' && !getCem()) raw = 'welcome';
   const [h, qs] = raw.split('?');
   const params = new URLSearchParams(qs || '');
   document.body.classList.toggle('wide', h.startsWith('admin'));
   document.body.classList.toggle('dark', h === 'scan');
+  document.body.classList.toggle('splash', h === 'welcome');
   renderTabs(h);
   window.scrollTo(0, 0);
   const p = h.split('/').map(decodeURIComponent);
   try {
+    if (p[0] === 'welcome') return viewWelcome();
     if (p[0] === 'scan') return viewScan();
     if (p[0] === 'register') return viewRegister(params);
     if (p[0] === 'm' && p[1]) {
@@ -95,6 +123,56 @@ async function route() {
 }
 document.addEventListener('click', e => { if (e.target.closest('[data-back]')) { e.preventDefault(); goBack(); } });
 
+// ---------- welcome ----------
+// Hero photo: put a photo at public/img/normandy-cemetery.jpg and fill in the credit line.
+// Until that file exists, the page shows a drawn illustration of rows of crosses instead.
+const HERO = { src: 'img/normandy-cemetery.jpg', alt: 'Rows of white marble crosses at the Normandy American Cemetery, Colleville-sur-Mer', credit: '' };
+function heroArt() {
+  // Rows of Latin crosses receding toward the horizon. Original drawing, no licence needed.
+  let crosses = '';
+  for (let r = 0; r < 7; r++) {
+    const t = r / 6, y = 150 + t * t * 120 + t * 40, k = 0.35 + t * 1.15, gap = 34 * k;
+    const off = (r % 2) * gap / 2;
+    for (let x = -gap + off; x < 640 + gap; x += gap) {
+      const w = 3.2 * k, h = 22 * k, aw = 13 * k, ay = y - h * 0.72;
+      crosses += `<g opacity="${(0.55 + t * 0.45).toFixed(2)}"><rect x="${(x - w / 2).toFixed(1)}" y="${(y - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"/><rect x="${(x - aw / 2).toFixed(1)}" y="${(ay - w / 2).toFixed(1)}" width="${aw.toFixed(1)}" height="${w.toFixed(1)}"/></g>`;
+    }
+  }
+  return `<svg class="hero-art" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Illustration of rows of white crosses on a lawn under an evening sky">
+    <defs><linearGradient id="hsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4a63"/><stop offset=".6" stop-color="#c99a6a"/><stop offset="1" stop-color="#ecd2a6"/></linearGradient>
+    <linearGradient id="hgrass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5d6b45"/><stop offset="1" stop-color="#2f3a24"/></linearGradient></defs>
+    <rect width="640" height="360" fill="url(#hsky)"/>
+    <path d="M0 140 Q 120 128 240 136 T 460 132 T 640 138 V 150 H 0 Z" fill="#4a5640" opacity=".9"/>
+    <rect y="146" width="640" height="214" fill="url(#hgrass)"/>
+    <g fill="#f4f1ea">${crosses}</g></svg>`;
+}
+function viewWelcome() {
+  const cur = getCem();
+  set(`<section class="welcome">
+    <figure class="hero">${heroArt()}<img id="heroImg" alt="${esc(HERO.alt)}" hidden><figcaption id="heroCredit" hidden></figcaption></figure>
+    <div class="pad welcome-body">
+      <h1 class="welcome-title">Honor and Respect</h1>
+      <div class="cem-pick">
+        <label for="cemSel">Select Cemetery</label>
+        <select class="input" id="cemSel"><option value="" ${cur ? '' : 'selected'} disabled>Choose a cemetery…</option>${cemOptions(cur)}</select>
+        <button class="btn btn-primary btn-block big" id="cemGo" ${cur ? '' : 'disabled'}>Continue</button>
+      </div>
+      <h4 class="sec">About</h4>
+      <div class="bio">
+        <p>Honor and Respect helps visitors learn the stories of the men and women who rest in America’s military cemeteries. Point your phone at a headstone, or scan a QR plaque, and the register opens that service member’s memorial page: name, rank, unit, hometown and dates of service, linked to public records from the American Battle Monuments Commission, Arlington National Cemetery and the National Archives.</p>
+        <p>The register is a shared effort. Families, historians and volunteers can add photographs, biographies and sources, and an editor reviews every change before it appears, so each record stays accurate and respectful.</p>
+        <p>Use it to plan a visit, to find a relative, or simply to pause at a stone and learn who lies there. Choose a cemetery above to begin.</p>
+      </div>
+      <div class="btnrow center"><a class="linkbtn" href="guide.html">User guide</a></div>
+    </div></section>`);
+  const img = $('#heroImg');
+  img.onload = () => { img.hidden = false; $('.hero-art').style.display = 'none'; if (HERO.credit) { const c = $('#heroCredit'); c.textContent = HERO.credit; c.hidden = false; } };
+  img.src = HERO.src;
+  const sel = $('#cemSel'), go = $('#cemGo');
+  sel.onchange = () => { go.disabled = !sel.value; };
+  go.onclick = () => { if (!sel.value) return; setCem(sel.value); if (/^#\/?scan$/.test(location.hash)) route(); else location.hash = '#/scan'; };
+}
+
 // ---------- scan ----------
 let scanMode = 'stone';
 function viewScan() {
@@ -102,6 +180,7 @@ function viewScan() {
     <div class="kicker light">Honor and Respect</div>
     <h2>${scanMode === 'stone' ? 'Scan a headstone' : 'Scan a QR plaque'}</h2>
     <div class="seg-dark"><button data-mode="stone" class="${scanMode === 'stone' ? 'on' : ''}">Headstone</button><button data-mode="qr" class="${scanMode === 'qr' ? 'on' : ''}">QR code</button></div>
+    <div class="cem-bar"><span class="cem-name">${esc(cemName())}</span><button class="cem-change" id="cemChange" type="button">change</button></div>
     ${scanMode === 'stone' ? `
       <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle stone-ret"></div><div class="finder-empty" id="liveIdle">${ICON.scan}<p>Live scan reads the inscription while you hold the phone steady. Fill the frame with the stone.</p></div><div class="live-text" id="liveText" hidden></div><div class="live-match" id="liveMatch" hidden></div></div>
       <div class="scan-actions"><button class="btn btn-light" id="startLive">${ICON.scan.replace(/23/g, '18')}Start live scan</button></div>
@@ -110,8 +189,10 @@ function viewScan() {
       <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle"></div><div class="finder-empty" id="qrIdle">${ICON.qr}<p>Point the camera at a plaque. The iPhone Camera app can also open these codes directly.</p></div></div>
       <div class="scan-actions"><button class="btn btn-light" id="startQR">Start camera</button><label class="btn btn-light-ghost">Scan from photo<input type="file" accept="image/*" id="qrfile" hidden></label></div>`}
     <a class="scan-type" href="#/register">${ICON.search.replace(/23/g, '16')}Type a name instead</a>
+    <a class="scan-about" href="#/welcome">About Honor and Respect</a>
   </section><section id="ocr" class="pad"></section>`);
   $$('[data-mode]').forEach(b => b.onclick = () => { scanMode = b.dataset.mode; stopCamera(); viewScan(); });
+  $('#cemChange').onclick = () => openCemPicker(() => { stopCamera(); viewScan(); });
   if (scanMode === 'stone') {
     ['#cap', '#lib'].forEach(s => $(s).onchange = e => { if (e.target.files[0]) { stopCamera(); handlePhoto(e.target.files[0]); } });
     $('#startLive').onclick = startLive;
@@ -172,7 +253,7 @@ async function startLive() {
         const combined = reads.join('\n');
         const lines = text.split('\n').map(s => s.trim()).filter(s => s.replace(/[^A-Za-z0-9]/g, '').length > 1).slice(0, 5);
         lt.innerHTML = `<span class="kicker light">Reading…</span>${lines.map(l => `<div class="ll">${esc(l)}</div>`).join('')}`;
-        const top = rankCandidates(combined, await api.candidates(combined), 3)[0];
+        const top = rankCandidates(combined, scoped(await api.candidates(combined)), 3)[0];
         if (top && top.score >= 55) { streak = top.m.id === lastTop ? streak + 1 : 1; lastTop = top.m.id; } else { streak = 0; lastTop = null; }
         if (top && streak >= 2) return found(top, combined);
       } catch (e) { console.warn(e); }
@@ -228,7 +309,7 @@ function showCandidates(text) {
 }
 async function rerank() {
   const text = $('#ocrText')?.value || '';
-  const list = rankCandidates(text, await api.candidates(text));
+  const list = rankCandidates(text, scoped(await api.candidates(text)));
   const g = guessSurname(text);
   if ($('#searchInstead')) $('#searchInstead').href = '#/register' + (g ? '?q=' + encodeURIComponent(g) : '');
   $('#cands').innerHTML = list.length ? list.map((c, i) => {
@@ -239,7 +320,7 @@ async function rerank() {
       <div class="small">${esc(v.rankLine)} · ${esc(v.lifespan)}</div>
       <div class="small muted">${esc(c.m.cemetery)} · ${esc(c.m.location)}</div>
       <div class="chips">${c.fields.map(([t, ok]) => `<span class="tag ${ok ? 'tag-accent' : 'tag-neutral'}">${ok ? '✓' : '×'} ${esc(t)}</span>`).join('')}</div></a>`;
-  }).join('') : `<p class="muted">No confident match yet. Try a sharper photo, or correct the text above.</p>`;
+  }).join('') : `<p class="muted">No confident match yet in ${esc(cemName() || 'the register')}. Try a sharper photo, or correct the text above.</p>`;
 }
 function handleQRText(text) {
   const m = String(text).match(/\/m\/([A-Za-z0-9._~-]+)/);
@@ -286,6 +367,7 @@ const FILTER_OPTS = {
   status: Object.keys(STATUS)
 };
 const reg = { q: '', cemetery: '', conflict: '', branch: '', status: '', sort: 'surname', limit: 50 };
+try { reg.cemetery = (CEMETERIES[localStorage.getItem('har-cemetery')] || {}).name || ''; } catch { }
 function indexHelp(e, el) {
   console.error(e);
   const link = (String(e.message || '').match(/https:\/\/console\.firebase\.google\.com\S+/) || [])[0];
@@ -426,7 +508,7 @@ const FIELDS = [
   ['birthplace', 'Birthplace'], ['enteredFrom', 'Entered service from'], ['conflict', 'Conflict'],
   ['photoUrl', 'Headstone photo URL', 'url'], ['biography', 'Biography', 'textarea'], ['sources', 'Sources (one per line)', 'lines'],
   ['awards', 'Awards (one per line)', 'lines'], ['inscription', 'Inscription (one line per row)', 'lines'], ['mediaUrls', 'Contributed media URLs (one per line)', 'lines'],
-  ['cemetery', 'Cemetery'], ['cemeteryKey', 'Cemetery key (normandy / arlington)'], ['location', 'Burial location (display)'], ['section', 'Section or plot'], ['row', 'Row'], ['site', 'Site or grave'],
+  ['cemetery', 'Cemetery'], ['cemeteryKey', 'Cemetery key (normandy / brittany / arlington)'], ['location', 'Burial location (display)'], ['section', 'Section or plot'], ['row', 'Row'], ['site', 'Site or grave'],
   ['geo.lat', 'Latitude', 'number'], ['geo.lng', 'Longitude', 'number'],
   ['record.source', 'Record source'], ['record.externalId', 'Record ID'], ['record.url', 'Record URL', 'url'], ['record.status', 'Record status', 'select:linked,possible,none'],
   ['status', 'Register status', 'select:verified,needs_review,unmatched']
@@ -575,7 +657,7 @@ function authMsg(e) { const c = e.code || ''; return c.includes('invalid-credent
 function afterAuth(stay) { renderTabs(location.hash.slice(2)); if (stay || location.hash.startsWith('#/account')) route(); }
 
 // ---------- admin ----------
-const adm = { q: '', status: '', page: 0, sel: {} };
+const adm = { q: '', status: '', cemetery: '', page: 0, sel: {} };
 async function viewAdmin(tab, params) {
   if (!isEditor()) return needAuth('Admin access required');
   if (!isAdmin() && !['listing', 'review'].includes(tab)) tab = 'listing';
@@ -587,6 +669,7 @@ async function viewAdmin(tab, params) {
     const total = await api.count().catch(() => null);
     box.className = '';
     box.innerHTML = `<div class="toolbar"><div class="searchbox" style="flex:1;min-width:220px;margin:0">${ICON.search.replace(/23/g, '17')}<input class="input" id="aq" type="search" value="${esc(adm.q)}" placeholder="Search ${total != null ? total.toLocaleString() + ' records ' : ''}by surname"></div>
+      <select class="input" id="acem" style="width:auto" aria-label="Cemetery"><option value="">All cemeteries</option>${Object.values(CEMETERIES).map(c => `<option value="${esc(c.name)}" ${adm.cemetery === c.name ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       <select class="input" id="ast" style="width:auto"><option value="">All statuses</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${adm.status === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>
       ${isAdmin() ? '<a class="btn btn-secondary" href="#/admin/new">+ New memorial</a><button class="btn btn-primary" id="printSel" disabled>Print QR for selected</button>' : ''}
       <a class="btn btn-ghost" href="#/register">Open public register</a></div>
@@ -598,12 +681,12 @@ async function viewAdmin(tab, params) {
     const draw = async () => {
       $('#atb').innerHTML = '<tr><td colspan="9" class="muted">Loading…</td></tr>';
       let res;
-      try { res = await api.page({ q: adm.q.trim(), status: adm.status, cursor: cursors[adm.page], limit: PER }); }
+      try { res = await api.page({ q: adm.q.trim(), status: adm.status, cemetery: adm.cemetery, cursor: cursors[adm.page], limit: PER }); }
       catch (e) { indexHelp(e, $('#pager')); $('#atb').innerHTML = ''; return; }
       rows = res.items; cursors[adm.page + 1] = res.last;
       const hasNext = rows.length === PER && !!res.last;
       $('#atb').innerHTML = rows.map(m => { const v = view(m); const enc = encodeURIComponent(m.id); return `<tr>${isAdmin() ? `<td><input type="checkbox" data-sel="${esc(m.id)}" ${adm.sel[m.id] ? 'checked' : ''}></td>` : ''}<td class="tnum">${esc(m.id)}</td><td><a href="#/m/${enc}">${esc(v.name)}</a></td><td>${esc(m.rankAbbr || m.rank || '')}</td><td>${esc(m.cemetery || '')}</td><td class="tnum">${esc(m.location || '')}</td><td class="tnum">${esc(m.deathYear || '')}</td><td><span class="tag sm ${v.statusClass}">${v.statusLabel}</span></td><td class="actions"><a href="#/m/${enc}/edit">Edit</a>${isAdmin() ? `<button class="linkbtn" data-qr="${esc(m.id)}">QR</button><button class="linkbtn" data-del="${esc(m.id)}">Delete</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" class="muted">No records.</td></tr>';
-      $('#pager').innerHTML = `<span class="small muted">${total != null ? total.toLocaleString() + ' records in the register · ' : ''}page ${adm.page + 1}</span><button class="btn btn-secondary" id="prev" ${adm.page ? '' : 'disabled'}>Previous</button><button class="btn btn-secondary" id="next" ${hasNext ? '' : 'disabled'}>Next</button>`;
+      $('#pager').innerHTML = `<span class="small muted">${total != null ? total.toLocaleString() + ' records in the register · ' : ''}${adm.cemetery ? esc(adm.cemetery) + ' · ' : ''}page ${adm.page + 1}</span><button class="btn btn-secondary" id="prev" ${adm.page ? '' : 'disabled'}>Previous</button><button class="btn btn-secondary" id="next" ${hasNext ? '' : 'disabled'}>Next</button>`;
       $('#prev').onclick = () => { adm.page--; draw(); }; $('#next').onclick = () => { adm.page++; draw(); };
       $$('[data-sel]').forEach(c => c.onchange = () => { adm.sel[c.dataset.sel] = c.checked; updSel(); });
       $$('[data-qr]').forEach(b => b.onclick = () => openPrint([rows.find(m => m.id === b.dataset.qr)]));
@@ -614,6 +697,7 @@ async function viewAdmin(tab, params) {
     let t;
     $('#aq').oninput = e => { adm.q = e.target.value; adm.page = 0; cursors = [null]; clearTimeout(t); t = setTimeout(draw, 300); };
     $('#ast').onchange = e => { adm.status = e.target.value; adm.page = 0; cursors = [null]; draw(); };
+    $('#acem').onchange = e => { adm.cemetery = e.target.value; adm.page = 0; cursors = [null]; draw(); };
     if ($('#printSel')) $('#printSel').onclick = async () => openPrint(await api.getMany(Object.keys(adm.sel).filter(k => adm.sel[k])));
     draw();
   }

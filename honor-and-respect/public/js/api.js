@@ -29,9 +29,9 @@ export class LocalAPI {
   }
   async candidates() { return this.listMemorials(); }
   async getMany(ids) { const all = await this.listMemorials(); return ids.map(id => all.find(m => m.id === id)).filter(Boolean); }
-  async page({ q, status, cursor, limit }) {
+  async page({ q, status, cemetery, cursor, limit }) {
     const k = skey(q);
-    const list = (await this.listMemorials()).filter(m => (!k || surnameKey(m).startsWith(k)) && (!status || m.status === status)).sort((a, b) => a.id.localeCompare(b.id));
+    const list = (await this.listMemorials()).filter(m => (!k || surnameKey(m).startsWith(k)) && (!status || m.status === status) && (!cemetery || m.cemetery === cemetery)).sort((a, b) => a.id.localeCompare(b.id));
     const start = cursor || 0;
     return { items: list.slice(start, start + limit), last: start + limit };
   }
@@ -117,8 +117,9 @@ export async function makeFireAPI(config) {
       return [...out.values()];
     },
     async getMany(ids) { return (await Promise.all(ids.map(id => this.getMemorial(id).catch(() => null)))).filter(Boolean); },
-    async page({ q, status, cursor, limit }) {
+    async page({ q, status, cemetery, cursor, limit }) {
       const cons = [];
+      if (cemetery) cons.push(fs.where('cemetery', '==', cemetery));
       if (status) cons.push(fs.where('status', '==', status));
       const k = skey(q);
       if (k) cons.push(fs.where('surnameKey', '>=', k), fs.where('surnameKey', '<=', k + '\uf8ff'), fs.orderBy('surnameKey'));

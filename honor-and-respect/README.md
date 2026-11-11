@@ -16,6 +16,13 @@ honor-and-respect/
   netlify.toml            ← used for Git-based deploys
 ```
 
+## Welcome page and cemetery selection
+First-time visitors land on a welcome page (`#/welcome`) with an About section and a **Select Cemetery** dropdown: Normandy American Cemetery, Brittany American Cemetery (both in Normandy) and Arlington National Cemetery. The choice is remembered on the device. The scan page then shows the cemetery name above the scan window with a **change** link that pops the selector up again. Scan matches are limited to the selected cemetery, and the Register starts filtered to it. QR plaque links (`/m/<ID>`) skip the welcome page. **Admin → Listing** has a cemetery filter.
+
+**Hero photo:** the welcome page shows a drawn illustration until you add a photo at `public/img/normandy-cemetery.jpg`. Then set the photographer credit in `HERO.credit` near the top of the welcome section in `js/app.js`. Use your own photo or one whose licence allows reuse, and note that the cemetery's architecture is protected by French copyright, so prefer images of the rows of graves rather than the memorial.
+
+The list of cemeteries lives in `CEMETERIES` in `js/data.js`. After adding the cemetery filter, run `firebase deploy --only firestore` (or follow the "needs a database index" link) so the cemetery + status combination in Admin → Listing has its index.
+
 ## 0. Try it right away (demo mode)
 Until you paste Firebase keys, the site runs in **demo mode**: 14 fictional sample records stored in the visitor's browser. Under **Account** you can switch roles (Contributor / Editor / Admin) to test permissions. You can deploy to Netlify in demo mode first.
 

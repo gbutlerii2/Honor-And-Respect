@@ -1,7 +1,8 @@
 // Sample register entries (fictional) in the Firestore schema used by the app.
 export const CEMETERIES = {
-  normandy: { name: 'Normandy American Cemetery', geo: [49.3597, -0.8555], plots: 'ABCDEFGHIJ'.split(''), top: 'Memorial · Reflecting pool · Chapel', gate: 'Visitor Center path' },
-  arlington: { name: 'Arlington National Cemetery', geo: [38.8783, -77.0687], plots: ['2', '12', '18', '21', '27', '30', '34', '54', '59', '60'], top: 'Memorial Amphitheater', gate: 'Welcome Center' }
+  normandy: { name: 'Normandy American Cemetery', short: 'Normandy', place: 'Colleville-sur-Mer, Normandy, France', geo: [49.3597, -0.8555], plots: 'ABCDEFGHIJ'.split(''), top: 'Memorial · Reflecting pool · Chapel', gate: 'Visitor Center path' },
+  brittany: { name: 'Brittany American Cemetery', short: 'Brittany', place: 'Saint-James (Manche), Normandy, France', geo: [48.5180, -1.2966], plots: 'ABCDEFGHIJKLMNOP'.split(''), top: 'Memorial chapel', gate: 'Visitor Building' },
+  arlington: { name: 'Arlington National Cemetery', short: 'Arlington', place: 'Arlington, Virginia, USA', geo: [38.8783, -77.0687], plots: ['2', '12', '18', '21', '27', '30', '34', '54', '59', '60'], top: 'Memorial Amphitheater', gate: 'Welcome Center' }
 };
 const BR_INS = { 'U.S. Army': 'US ARMY', 'U.S. Navy': 'US NAVY', 'U.S. Marine Corps': 'USMC', 'U.S. Air Force': 'US AIR FORCE', 'U.S. Army Air Forces': 'US AAF' };
 
