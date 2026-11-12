@@ -112,7 +112,7 @@ export class LocalAPI {
   resetDemo() { ['memorials', 'revisions'].forEach(n => localStorage.removeItem(this.k + n)); }
 }
 
-export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
+export async function makeFireAPI(config, { recaptchaSiteKey = '', recaptchaType = 'v3' } = {}) {
   const V = '10.12.2', B = `https://www.gstatic.com/firebasejs/${V}/`;
   const [{ initializeApp, deleteApp }, fs, au] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-firestore.js'), import(B + 'firebase-auth.js')]);
   const app = initializeApp(config);
@@ -121,7 +121,8 @@ export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
     try {
       if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; // prints a debug token to register in the console
       const ac = await import(B + 'firebase-app-check.js');
-      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaEnterpriseProvider(recaptchaSiteKey), isTokenAutoRefreshEnabled: true }); // Fraud Defense (formerly reCAPTCHA Enterprise)
+      const provider = recaptchaType === 'enterprise' ? new ac.ReCaptchaEnterpriseProvider(recaptchaSiteKey) : new ac.ReCaptchaV3Provider(recaptchaSiteKey); // enterprise = Fraud Defense
+      ac.initializeAppCheck(app, { provider, isTokenAutoRefreshEnabled: true });
     } catch (e) { console.warn('App Check could not start', e); }
   }
   const db = fs.getFirestore(app);

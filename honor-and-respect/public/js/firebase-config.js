@@ -22,8 +22,9 @@ export const OWNER_EMAIL = `${OWNER_USERNAME}@${USERNAME_DOMAIN}`;
 // Show "Continue with Google" on the sign-in screen (enable the Google provider in Firebase Auth first)
 export const ENABLE_GOOGLE_SIGNIN = true;
 
-// Bot protection (Firebase App Check with Google Cloud Fraud Defense, formerly
-// reCAPTCHA Enterprise; invisible to visitors). Leave empty to switch it off.
-// To switch it on, see README → "Bot protection". Fraud Defense keys have no secret;
-// the key is public by design.
-export const RECAPTCHA_SITE_KEY = "";
+// Bot protection (Firebase App Check, invisible to visitors). Leave the key empty to
+// switch it off; see README → "Bot protection". Use the SITE key only (it is public);
+// never put a reCAPTCHA secret key here.
+// RECAPTCHA_TYPE: "v3" for a classic reCAPTCHA v3 key, "enterprise" for a Fraud Defense key.
+export const RECAPTCHA_SITE_KEY = "6LfdXR0uAAAAAEoUmicnJproOoVU_fnDmK9bDnwD";
+export const RECAPTCHA_TYPE = "v3";

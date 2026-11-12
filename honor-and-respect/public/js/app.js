@@ -1,4 +1,4 @@
-import { firebaseConfig, SITE_URL, ENABLE_GOOGLE_SIGNIN, OWNER_EMAIL, USERNAME_DOMAIN, RECAPTCHA_SITE_KEY } from './firebase-config.js';
+import { firebaseConfig, SITE_URL, ENABLE_GOOGLE_SIGNIN, OWNER_EMAIL, USERNAME_DOMAIN, RECAPTCHA_SITE_KEY, RECAPTCHA_TYPE } from './firebase-config.js';
 const toEmail = s => { s = String(s || '').trim().toLowerCase(); return s.includes('@') ? s : `${s}@${USERNAME_DOMAIN}`; };
 import { SAMPLE, CEMETERIES, STATUS, view } from './data.js';
 import { US, cemCountries, cemStates, cemIn, cemGroups } from './cemeteries.js';
@@ -1078,7 +1078,7 @@ async function boot() {
     window.addEventListener('hashchange', route);
     return route();
   }
-  try { api = addActivityLog(await makeFireAPI(firebaseConfig, { recaptchaSiteKey: RECAPTCHA_SITE_KEY })); }
+  try { api = addActivityLog(await makeFireAPI(firebaseConfig, { recaptchaSiteKey: RECAPTCHA_SITE_KEY, recaptchaType: RECAPTCHA_TYPE })); }
   catch (e) { console.error(e); set('<div class="pad"><h2>Could not connect</h2><p class="muted">Check the Firebase settings in js/firebase-config.js.</p></div>'); return; }
   window.addEventListener('hashchange', route);
   let first = true;
