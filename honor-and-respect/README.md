@@ -156,7 +156,7 @@ node import-abmc.mjs upload --limit 500            # test a small batch, check i
 node import-abmc.mjs upload                        # the rest
 ```
 
-**How long it takes:** `list` is quick (Normandy + Brittany is about 32 requests; every cemetery is about 450). `details` is one request per soldier, about 2 seconds apart: Normandy + Brittany (about 15,850 names) takes 8–9 hours, and every ABMC site (about 224,600) would take about 5 days, so run it cemetery by cemetery, overnight. You can `convert` and `upload` after `list` alone; those records just lack the grave location and date of death until `details` has run and you convert and upload again (delete `data/abmc/upload-state.json` first).
+**How long it takes:** `list` is quick (Normandy + Brittany is about 32 requests; every cemetery is about 450). `details` is one request per soldier, about 2 seconds apart: Normandy + Brittany (about 15,850 names) takes 8–9 hours, and every ABMC site (about 224,600) would take about 5 days, so run it cemetery by cemetery, overnight. You can `convert` and `upload` after `list` alone; those records get blank placeholder fields (`section`, `row`, `site`, `location`, `deathDate`, `awards`, `missing: null`, `detailsFetched: false`) and lack the grave location and date of death until `details` has run and you convert and upload again (delete `data/abmc/upload-state.json` first).
 
 **What each record gets:** name, rank, branch, unit and division, service number, state entered service from, war, cemetery, plot/row/grave (or "Tablets of the Missing" with `missing: true`), date of death, awards, and the ABMC citation. IDs look like `ABMC-<ABMC record id>`, so re-running keeps QR plaques stable and keeps anything added in the app.
 
