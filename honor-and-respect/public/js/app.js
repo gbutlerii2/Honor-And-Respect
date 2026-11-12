@@ -1,7 +1,7 @@
 import { firebaseConfig, SITE_URL, ENABLE_GOOGLE_SIGNIN, OWNER_EMAIL, USERNAME_DOMAIN } from './firebase-config.js';
 const toEmail = s => { s = String(s || '').trim().toLowerCase(); return s.includes('@') ? s : `${s}@${USERNAME_DOMAIN}`; };
 import { SAMPLE, CEMETERIES, STATUS, view } from './data.js';
-import { US, cemCountries, cemStates, cemIn, cemGroups } from './cemeteries.js';
+import { US, cemCountries, cemStates, cemIn, cemGroups, scanModes, isMemorial, SCAN_MODES } from './cemeteries.js';
 import { rankCandidates, guessSurname } from './match.js';
 import { LocalAPI, makeFireAPI } from './api.js';
 
@@ -56,7 +56,7 @@ function cascadeHTML(id, cur) {
   return `<div class="cascade" id="${id}">
     <div class="field"><label for="${id}-country">Select Country</label><select class="input" id="${id}-country" data-c="country">${optList(cemCountries().map(x => [x, x]), c.country || '', 'Choose a country…')}</select></div>
     <div class="field" data-wrap="state" hidden><label for="${id}-state">Select State</label><select class="input" id="${id}-state" data-c="state"></select></div>
-    <div class="field"><label for="${id}-cem">Select Cemetery</label><select class="input" id="${id}-cem" data-c="cem" disabled></select></div>
+    <div class="field"><label for="${id}-cem">Select Cemetery or Memorial</label><select class="input" id="${id}-cem" data-c="cem" disabled></select></div>
   </div>`;
 }
 // Wires a cascade rendered by cascadeHTML. onPick(key) runs whenever the chosen cemetery changes ('' when none).
@@ -67,7 +67,7 @@ function wireCascade(id, cur, onPick) {
     const country = cs.value, needState = country === US;
     const list = !country || (needState && !ss.value) ? [] : cemIn(country, needState ? ss.value : '');
     if (!key && list.length === 1) key = list[0][0]; // only one cemetery there: pick it
-    ks.innerHTML = optList(list.map(([k, c]) => [k, c.name]), key, !country ? 'Choose a country first' : needState && !ss.value ? 'Choose a state first' : 'Choose a cemetery…');
+    ks.innerHTML = optList(list.map(([k, c]) => [k, c.name]), key, !country ? 'Choose a country first' : needState && !ss.value ? 'Choose a state first' : 'Choose a cemetery or memorial…');
     ks.disabled = !list.length;
     onPick(ks.value || '');
   };
@@ -92,7 +92,7 @@ function wireCascade(id, cur, onPick) {
 function openCemPicker(after) {
   const old = $('#cemModal'); if (old) old.parentNode.removeChild(old);
   document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="cemModal" role="dialog" aria-modal="true" aria-labelledby="cemModalT"><div class="modal-card">
-    <div class="kicker">Honor and Respect</div><h2 id="cemModalT">Select cemetery</h2>
+    <div class="kicker">Honor and Respect</div><h2 id="cemModalT">Select cemetery or memorial</h2>
     ${cascadeHTML('cemModalPick', getCem())}
     <div class="btnrow"><button class="btn btn-secondary" id="cemCancel" type="button">Cancel</button><button class="btn btn-primary" id="cemOk" type="button">Select</button></div></div></div>`);
   const modal = $('#cemModal');
@@ -200,9 +200,9 @@ function viewWelcome() {
       </div>
       <h4 class="sec">About</h4>
       <div class="bio">
-        <p>Honor and Respect helps visitors learn the stories of the men and women who rest in America’s military cemeteries. Point your phone at a headstone, or scan a QR plaque, and the register opens that service member’s memorial page: name, rank, unit, hometown and dates of service, linked to public records from the American Battle Monuments Commission, Arlington National Cemetery and the National Archives.</p>
+        <p>Honor and Respect helps visitors learn the stories of the men and women who rest in America’s military cemeteries or are named on its war memorials. Point your phone at a headstone or an engraved name, or scan a QR plaque, and the register opens that service member’s memorial page: name, rank, unit, hometown and dates of service, linked to public records from the American Battle Monuments Commission, Arlington National Cemetery and the National Archives.</p>
         <p>The register is a shared effort. Families, historians and volunteers can add photographs, biographies and sources, and an editor reviews every change before it appears, so each record stays accurate and respectful.</p>
-        <p>Use it to plan a visit, to find a relative, or simply to pause at a stone and learn who lies there. Choose a cemetery above to begin.</p>
+        <p>Use it to plan a visit, to find a relative, or simply to pause at a stone and learn who lies there. Choose a cemetery or memorial above to begin.</p>
       </div>
       <div class="btnrow center"><a class="linkbtn" href="guide.html">User guide</a></div>
     </div></section>`);
@@ -216,15 +216,28 @@ function viewWelcome() {
 }
 
 // ---------- scan ----------
-let scanMode = 'stone';
+// What the scan page offers depends on the site (see scanModes in cemeteries.js): Arlington and
+// Normandy offer Headstone, Name and QR code; the Vietnam Veterans Memorial offers Name only.
+// 'headstone' and 'name' share the camera, photo and name-search tools; they differ in the
+// framing guide and in how text is matched (name mode ignores dates, units and ranks).
+let scanMode = 'headstone';
+const nameMode = () => scanMode === 'name';
+const MATCH_AT = () => (nameMode() ? 75 : 55); // a name-only read needs surname + first name to auto-match
+const rankFor = (text, list, n) => rankCandidates(text, list, n, { nameOnly: nameMode() });
 function viewScan() {
+  const modes = scanModes(getCem());
+  if (!modes.includes(scanMode)) scanMode = modes[0];
+  const ocr = scanMode !== 'qr', memorial = isMemorial(getCem());
+  const idle = nameMode()
+    ? `Line up one engraved name inside the band and hold steady. Live scan reads it and finds the person${memorial ? ' on this memorial' : ''}.`
+    : 'Live scan reads the inscription while you hold the phone steady. Fill the frame with the stone.';
   set(`<section class="scan">
     <div class="kicker light">Honor and Respect</div>
-    <h2>${scanMode === 'stone' ? 'Scan a headstone' : 'Scan a QR plaque'}</h2>
-    <div class="seg-dark"><button data-mode="stone" class="${scanMode === 'stone' ? 'on' : ''}">Headstone</button><button data-mode="qr" class="${scanMode === 'qr' ? 'on' : ''}">QR code</button></div>
+    <h2>${SCAN_MODES[scanMode].title}</h2>
+    ${modes.length > 1 ? `<div class="seg-dark">${modes.map(k => `<button data-mode="${k}" class="${scanMode === k ? 'on' : ''}">${SCAN_MODES[k].tab}</button>`).join('')}</div>` : ''}
     <div class="cem-bar"><span class="cem-name">${esc(cemName())}</span><button class="cem-change" id="cemChange" type="button">change</button></div>
-    ${scanMode === 'stone' ? `
-      <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle stone-ret"></div><div class="finder-empty" id="liveIdle">${ICON.scan}<p>Live scan reads the inscription while you hold the phone steady. Fill the frame with the stone.</p></div><div class="live-text" id="liveText" hidden></div><div class="live-match" id="liveMatch" hidden></div></div>
+    ${ocr ? `
+      <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle ${nameMode() ? 'name-ret' : 'stone-ret'}"></div><div class="finder-empty${nameMode() ? ' below' : ''}" id="liveIdle">${nameMode() ? '' : ICON.scan}<p>${idle}</p></div><div class="live-text" id="liveText" hidden></div><div class="live-match" id="liveMatch" hidden></div></div>
       <div class="scan-actions"><button class="btn btn-light" id="startLive">${ICON.scan.replace(/23/g, '18')}Start live scan</button></div>
       <div class="searchbox scan-search">${ICON.search.replace(/23/g, '17')}<input class="input" id="nameQ" type="search" placeholder="Or search for a name" autocomplete="off" autocapitalize="words" enterkeyhint="search" aria-label="Search for a name"></div>
       <div class="scan-results" id="nameResults" hidden></div>
@@ -237,7 +250,7 @@ function viewScan() {
   </section><section id="ocr" class="pad"></section>`);
   $$('[data-mode]').forEach(b => b.onclick = () => { scanMode = b.dataset.mode; stopCamera(); viewScan(); });
   $('#cemChange').onclick = () => openCemPicker(() => { stopCamera(); viewScan(); });
-  if (scanMode === 'stone') {
+  if (ocr) {
     ['#cap', '#lib'].forEach(s => $(s).onchange = e => { if (e.target.files[0]) { stopCamera(); handlePhoto(e.target.files[0]); } });
     $('#startLive').onclick = startLive;
     wireNameSearch();
@@ -335,7 +348,8 @@ async function startLive() {
     if (!alive) return;
     if (v.readyState >= 2 && v.videoWidth) {
       const vw = v.videoWidth, vh = v.videoHeight;
-      const sx = vw * 0.12, sy = vh * 0.1, sw = vw * 0.76, sh = vh * 0.8;
+      // Read only what is inside the guide: the stone outline, or the one-line band in name mode.
+      const [sx, sy, sw, sh] = nameMode() ? [vw * 0.06, vh * 0.36, vw * 0.88, vh * 0.28] : [vw * 0.12, vh * 0.1, vw * 0.76, vh * 0.8];
       const k = Math.min(1, 1200 / sw);
       c.width = Math.round(sw * k); c.height = Math.round(sh * k);
       x.filter = 'grayscale(1) contrast(1.5)';
@@ -349,20 +363,25 @@ async function startLive() {
         const combined = reads.join('\n');
         const lines = text.split('\n').map(s => s.trim()).filter(s => s.replace(/[^A-Za-z0-9]/g, '').length > 1).slice(0, 5);
         lt.innerHTML = `<span class="kicker light">Reading…</span>${lines.map(l => `<div class="ll">${esc(l)}</div>`).join('')}`;
-        const top = rankCandidates(combined, scoped(await api.candidates(combined)), 3)[0];
-        if (top && top.score >= 55) { streak = top.m.id === lastTop ? streak + 1 : 1; lastTop = top.m.id; } else { streak = 0; lastTop = null; }
-        if (top && streak >= 2) return found(top, combined);
+        // Headstone mode wants one clear winner. Name mode can see several names on a wall at once,
+        // so it settles when the same set of confident names is read twice in a row and lists them.
+        const ranked = rankFor(combined, scoped(await api.candidates(combined)), 5).filter(x => x.score >= MATCH_AT());
+        const hits = nameMode() ? ranked : ranked.slice(0, 1);
+        const key = hits.map(x => x.m.id).sort().join('|');
+        if (key) { streak = key === lastTop ? streak + 1 : 1; lastTop = key; } else { streak = 0; lastTop = null; }
+        if (key && streak >= 2) return found(hits, combined);
       } catch (e) { console.warn(e); }
     }
     if (Date.now() - started > 30000) {
       stopCamera(); $('#finder').classList.remove('live');
-      lt.innerHTML = 'No confident match yet. Move closer, avoid glare, or take a photo instead.';
+      lt.innerHTML = nameMode() ? 'No confident match yet. Fit one full name in the band, avoid glare, or take a photo instead.' : 'No confident match yet. Move closer, avoid glare, or take a photo instead.';
       label('Try again'); btn.onclick = restart;
       return;
     }
     timer = setTimeout(loop, 300);
   };
-  const found = (top, text) => {
+  const found = (hits, text) => {
+    const top = hits[0];
     const snap = document.createElement('canvas'); snap.width = v.videoWidth; snap.height = v.videoHeight; snap.getContext('2d').drawImage(v, 0, 0);
     stopCamera(); $('#finder').classList.remove('live');
     v.insertAdjacentHTML('afterend', `<img src="${snap.toDataURL('image/jpeg', 0.8)}" alt="">`);
@@ -370,7 +389,9 @@ async function startLive() {
     const mv = view(top.m);
     lt.hidden = true;
     const box = $('#liveMatch'); box.hidden = false;
-    box.innerHTML = `<div class="kicker light">Match found · ${top.score}%</div><div class="lm-name">${esc(mv.name)}</div><div class="small">${esc(mv.rankLine)} · ${esc(mv.lifespan)}</div><div class="small" style="opacity:.8">${esc(top.m.location || '')}</div><div class="btnrow"><a class="btn btn-light" href="#/m/${encodeURIComponent(top.m.id)}">Open memorial</a><button class="btn btn-light-ghost" id="again">Keep scanning</button></div>`;
+    box.innerHTML = hits.length > 1
+      ? `<div class="kicker light">${hits.length} names found</div><div class="lm-list">${hits.map(h => { const hv = view(h.m); return `<a class="lm-row" href="#/m/${encodeURIComponent(h.m.id)}"><span class="lm-n">${esc(hv.name)}</span><span class="small">${esc(h.m.location || '')}</span></a>`; }).join('')}</div><div class="btnrow"><button class="btn btn-light-ghost" id="again">Keep scanning</button></div>`
+      : `<div class="kicker light">Match found · ${top.score}%</div><div class="lm-name">${esc(mv.name)}</div><div class="small">${esc(mv.rankLine)} · ${esc(mv.lifespan)}</div><div class="small" style="opacity:.8">${esc(top.m.location || '')}</div><div class="btnrow"><a class="btn btn-light" href="#/m/${encodeURIComponent(top.m.id)}">Open memorial</a><button class="btn btn-light-ghost" id="again">Keep scanning</button></div>`;
     $('#again').onclick = restart;
     label('Scan again'); btn.onclick = restart;
     showCandidates(text);
@@ -383,16 +404,17 @@ async function handlePhoto(file) {
   try { img = await loadImg(file); } catch (e) { return toast('Could not open that photo'); }
   const fin = $('#finder');
   fin.classList.add('cropping');
-  fin.innerHTML = `<img src="${img.src}" alt="Captured headstone"><div class="crop-box" id="cropBox"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>`;
+  const what = nameMode() ? 'Captured name' : 'Captured headstone';
+  fin.innerHTML = `<img src="${img.src}" alt="${what}"><div class="crop-box" id="cropBox"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>`;
   $('#ocr').innerHTML = '';
   $('#cropActions')?.remove();
-  fin.insertAdjacentHTML('afterend', `<div id="cropActions"><p class="crop-hint">Drag the box over the name and dates. Leaving out grass and sky gives the best read.</p><div class="scan-actions" style="margin-top:8px"><button class="btn btn-light" id="readCrop">Read inscription</button><button class="btn btn-light-ghost" id="readAll">Use whole photo</button></div></div>`);
+  fin.insertAdjacentHTML('afterend', `<div id="cropActions"><p class="crop-hint">${nameMode() ? 'Drag the box over one name. Leaving out the names around it gives the best read.' : 'Drag the box over the name and dates. Leaving out grass and sky gives the best read.'}</p><div class="scan-actions" style="margin-top:8px"><button class="btn btn-light" id="readCrop">${nameMode() ? 'Read name' : 'Read inscription'}</button><button class="btn btn-light-ghost" id="readAll">Use whole photo</button></div></div>`);
   // Displayed image area inside the finder (object-fit: contain).
   const area = () => { const W = fin.clientWidth, H = fin.clientHeight, k = Math.min(W / img.width, H / img.height); const w = img.width * k, h = img.height * k; return { x: (W - w) / 2, y: (H - h) / 2, w, h, k }; };
   const box = $('#cropBox');
   let b;
   const place = () => { box.style.left = b.x + 'px'; box.style.top = b.y + 'px'; box.style.width = b.w + 'px'; box.style.height = b.h + 'px'; };
-  const reset = () => { const a = area(); b = { x: a.x + a.w * 0.08, y: a.y + a.h * 0.3, w: a.w * 0.84, h: a.h * 0.28 }; place(); };
+  const reset = () => { const a = area(); b = nameMode() ? { x: a.x + a.w * 0.1, y: a.y + a.h * 0.42, w: a.w * 0.8, h: a.h * 0.16 } : { x: a.x + a.w * 0.08, y: a.y + a.h * 0.3, w: a.w * 0.84, h: a.h * 0.28 }; place(); };
   reset();
   const ro = new ResizeObserver(reset); ro.observe(fin);
   box.onpointerdown = e => {
@@ -419,7 +441,7 @@ async function handlePhoto(file) {
     r.x = Math.max(0, r.x); r.y = Math.max(0, r.y); r.w = Math.min(img.width - r.x, r.w); r.h = Math.min(img.height - r.y, r.h);
     fin.classList.remove('cropping');
     $('#cropActions')?.remove();
-    fin.innerHTML = `<img src="${img.src}" alt="Captured headstone"><div class="scanbar"></div>`;
+    fin.innerHTML = `<img src="${img.src}" alt="${what}"><div class="scanbar"></div>`;
     readStone(img, r);
   };
   $('#readCrop').onclick = () => go(false);
@@ -427,15 +449,15 @@ async function handlePhoto(file) {
 }
 async function readStone(img, r) {
   const out = $('#ocr');
-  const msg = t => { out.innerHTML = `<div class="kicker">Reading inscription</div><div class="progress indet"><div></div></div><p class="muted small">${t}</p>`; };
+  const msg = t => { out.innerHTML = `<div class="kicker">${nameMode() ? 'Reading name' : 'Reading inscription'}</div><div class="progress indet"><div></div></div><p class="muted small">${t}</p>`; };
   msg('Loading text recognition…');
-  const best = async text => { const top = rankCandidates(text, scoped(await api.candidates(text)), 1)[0]; return top ? top.score : 0; };
+  const best = async text => { const top = rankFor(text, scoped(await api.candidates(text)), 1)[0]; return top ? top.score : 0; };
   try {
     const w = await getWorker();
     msg('Reading…');
     const t1 = (await w.recognize(prepCanvas(img, r, false))).data.text || '';
     let text = t1, score = await best(t1);
-    if (score < 55) {
+    if (score < MATCH_AT()) {
       msg('Trying again with stronger contrast…');
       const t2 = (await w.recognize(prepCanvas(img, r, true))).data.text || '';
       for (const t of [t2, t1 + '\n' + t2]) { const s2 = await best(t); if (s2 > score) { score = s2; text = t; } }
@@ -447,13 +469,14 @@ async function readStone(img, r) {
     console.warn(e);
     $('.scanbar')?.remove();
     showCandidates('');
-    toast('Text recognition failed. Type the inscription instead.');
+    toast(nameMode() ? 'Text recognition failed. Type the name instead.' : 'Text recognition failed. Type the inscription instead.');
   }
 }
 function showCandidates(text) {
   const out = $('#ocr');
-  out.innerHTML = `<div class="kicker">Read from stone</div>
-    <textarea class="input ocr-text" id="ocrText" rows="4" placeholder="Type the inscription as it appears">${esc(text.trim())}</textarea>
+  const nm = nameMode();
+  out.innerHTML = `<div class="kicker">${nm ? 'Name as read' : 'Read from stone'}</div>
+    <textarea class="input ocr-text" id="ocrText" rows="${nm ? 2 : 4}" placeholder="${nm ? 'Type the name as it appears' : 'Type the inscription as it appears'}">${esc(text.trim())}</textarea>
     <p class="muted small">Correct any misread letters and the matches update.</p>
     <h3 style="margin-top:18px">Possible matches</h3><div id="cands"></div>
     <div class="none"><p class="muted small">None of these?</p><a class="btn btn-secondary btn-block" id="searchInstead" href="#/register">Search the register</a></div>`;
@@ -462,7 +485,7 @@ function showCandidates(text) {
 }
 async function rerank() {
   const text = $('#ocrText')?.value || '';
-  const list = rankCandidates(text, scoped(await api.candidates(text)));
+  const list = rankFor(text, scoped(await api.candidates(text)));
   const g = guessSurname(text);
   if ($('#searchInstead')) $('#searchInstead').href = '#/register' + (g ? '?q=' + encodeURIComponent(g) : '');
   $('#cands').innerHTML = list.length ? list.map((c, i) => {
@@ -645,11 +668,11 @@ async function viewLocation(id) {
   const visited = !!store.get('har-visited')[id];
   const g = m.geo || (c && c.geo ? { lat: c.geo[0], lng: c.geo[1] } : null);
   set(`<header class="topbar">${backBtn('Memorial')}</header><div class="pad">
-    <div class="kicker">Grave location</div><h1 class="display" style="font-size:30px">${esc(m.cemetery)}</h1>
+    <div class="kicker">${c && c.type === 'memorial' ? 'Name on the memorial' : 'Grave location'}</div><h1 class="display" style="font-size:30px">${esc(m.cemetery)}</h1>
     ${c && c.plots ? `<div class="plan"><div class="plan-top">${esc(c.top)}</div><div class="plots">${c.plots.map(p => `<div class="${String(p) === String(m.section) ? 'on' : ''}">${p}</div>`).join('')}</div><div class="plan-you"><i></i>You are here · ${esc(c.gate)}</div></div>` : ''}
     <div class="card" style="margin-top:14px;gap:6px"><div class="card-title" style="font-size:20px">${esc(v.name)}</div><div class="small">${esc(m.location)}</div>
       <div class="btnrow">${g ? `<a class="btn btn-primary" href="https://maps.apple.com/?daddr=${g.lat},${g.lng}&dirflg=w" target="_blank" rel="noopener">Walking directions</a>` : ''}<button class="btn btn-secondary" id="visit">${visited ? 'Visited ✓' : 'Mark visited'}</button></div></div>
-    <p class="small muted" style="margin-top:12px">Plot plan is schematic. Directions use the grave’s stored coordinates.</p>
+    <p class="small muted" style="margin-top:12px">${c && c.type === 'memorial' ? 'Names are found by panel and line. Lines are counted from the top of the panel.' : 'Plot plan is schematic. Directions use the grave’s stored coordinates.'}</p>
   </div>`);
   $('#visit').onclick = () => { const s = store.get('har-visited'); s[id] ? delete s[id] : (s[id] = Date.now()); store.set('har-visited', s); $('#visit').textContent = s[id] ? 'Visited ✓' : 'Mark visited'; toast(s[id] ? 'Marked as visited' : 'Visit removed'); };
 }

@@ -65,6 +65,9 @@ body.dark #ocr:not(:empty) { background: var(--color-bg); }
 .finder-empty p { margin: 0; }
 .reticle { position: absolute; inset: 20% 16%; border: 2px solid var(--color-accent-400); border-radius: 6px; pointer-events: none; z-index: 1; }
 .reticle.stone-ret { inset: 10% 12%; border-radius: 40% 40% 6px 6px / 22% 22% 6px 6px; }
+/* Name mode: a one-line band for a single engraved name (memorial walls, tablets of the missing). */
+.reticle.name-ret { inset: 36% 6%; border-radius: 4px; }
+.finder-empty.below { align-self: end; padding-bottom: 14px; }
 .finder.live .reticle { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { border-color: color-mix(in srgb, var(--color-accent-400) 40%, transparent); } }
 .live-text { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 2; background: color-mix(in srgb, var(--color-neutral-900) 88%, transparent); border: 1px solid color-mix(in srgb, var(--color-neutral-100) 16%, transparent); border-radius: 4px; padding: 10px 12px; font-size: 13px; color: var(--color-neutral-200); min-height: 44px; }
@@ -72,6 +75,9 @@ body.dark #ocr:not(:empty) { background: var(--color-bg); }
 .live-match { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 3; background: var(--color-neutral-900); border: 1px solid var(--color-accent-400); border-radius: 6px; padding: 14px; color: var(--color-neutral-100); display: flex; flex-direction: column; gap: 3px; box-shadow: var(--shadow-lg); }
 .live-match .lm-name { font-family: var(--font-heading); font-size: 24px; line-height: 1.1; margin-top: 2px; }
 .live-match .btn-light { text-decoration: none; }
+.live-match .lm-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 2px; max-height: 40vh; overflow: auto; }
+.live-match .lm-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--color-neutral-700); color: inherit; text-decoration: none; }
+.live-match .lm-n { font-family: var(--font-heading); font-size: 19px; line-height: 1.15; }
 .finder img { z-index: 0; }
 .scan-actions .btn svg { margin-right: 2px; }
 .scanbar { position: absolute; left: 8%; right: 8%; height: 2px; background: var(--color-accent-400); box-shadow: 0 0 14px var(--color-accent-400); animation: sweep 1.6s ease-in-out infinite alternate; }
