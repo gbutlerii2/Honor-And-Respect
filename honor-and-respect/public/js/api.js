@@ -121,7 +121,7 @@ export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
     try {
       if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; // prints a debug token to register in the console
       const ac = await import(B + 'firebase-app-check.js');
-      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaV3Provider(recaptchaSiteKey), isTokenAutoRefreshEnabled: true });
+      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaEnterpriseProvider(recaptchaSiteKey), isTokenAutoRefreshEnabled: true }); // Fraud Defense (formerly reCAPTCHA Enterprise)
     } catch (e) { console.warn('App Check could not start', e); }
   }
   const db = fs.getFirestore(app);

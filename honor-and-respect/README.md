@@ -119,15 +119,14 @@ By default a post appears straight away. **Admin → Remembrances** lists every 
 
 Signed-in editors and admins always publish directly.
 
-Spam protection: Firestore rules check every field and length and that the memorial exists; a hidden honeypot field; a 3-second minimum on the form; at most two links per post; three posts per device per 10 minutes; optional invisible reCAPTCHA (see **Bot protection**) and optional email confirmation.
+Spam protection: Firestore rules check every field and length and that the memorial exists; a hidden honeypot field; a 3-second minimum on the form; at most two links per post; three posts per device per 10 minutes; optional invisible bot check (see **Bot protection**) and optional email confirmation.
 
-### Bot protection (reCAPTCHA via Firebase App Check)
-Invisible to visitors. Once enforced, Firestore rejects any request that doesn't come from the real website, so bots can't post by calling the database directly.
-1. Go to https://www.google.com/recaptcha/admin/create, choose **reCAPTCHA v3**, and add the domains `honor-and-respect.com`, `honor-and-respect.netlify.app` and `netlify.app` (for deploy previews).
-2. Firebase console → **App Check** → **Apps** → your web app → **reCAPTCHA** → paste the **secret key** → Save.
-3. Paste the **site key** into `RECAPTCHA_SITE_KEY` in `public/js/firebase-config.js` and deploy.
-4. Watch **App Check → APIs → Cloud Firestore** for a day or two. When nearly all requests show as verified, click **Enforce**. Don't enforce Authentication (the admin "Add a user" screen uses a second app instance without App Check).
-5. Testing on localhost: the browser console prints a debug token; add it under App Check → Apps → ⋮ → Manage debug tokens.
+### Bot protection (Fraud Defense via Firebase App Check)
+Invisible to visitors. Once enforced, Firestore rejects any request that doesn't come from the real website, so bots can't post by calling the database directly. Uses Google Cloud **Fraud Defense** (formerly reCAPTCHA Enterprise; free tier covers 10,000 checks a month). Classic reCAPTCHA v3 keys from google.com/recaptcha won't work with this code.
+1. Firebase console → **App Check** → **Apps** → your web app → choose **Fraud Defense / reCAPTCHA Enterprise**. Create a key there (or in Google Cloud console → Security → Fraud Defense → Keys, project `honor-and-respect`): type **Website**, domains `honor-and-respect.com`, `honor-and-respect.netlify.app` and `netlify.app`, and no checkbox challenge. Save it in App Check.
+2. Paste the key ID into `RECAPTCHA_SITE_KEY` in `public/js/firebase-config.js` and deploy. (There is no secret key.)
+3. Watch **App Check → APIs → Cloud Firestore** for a day or two. When nearly all requests show as verified, click **Enforce**. Don't enforce Authentication (the admin "Add a user" screen uses a second app instance without App Check).
+4. Testing on localhost: the browser console prints a debug token; add it under App Check → Apps → ⋮ → Manage debug tokens.
 The import scripts use the Admin SDK and aren't affected.
 
 ### Email confirmation (optional, later)
