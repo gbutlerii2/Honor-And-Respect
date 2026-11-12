@@ -23,7 +23,10 @@ function withJoins(toks) {
   return out;
 }
 
-export function rankCandidates(text, memorials, limit = 5) {
+// opts.nameOnly: the text is engraved names (a memorial wall, tablets of the missing), not a
+// headstone, so only name fields count. See rankNames.
+export function rankCandidates(text, memorials, limit = 5, opts = {}) {
+  if (opts.nameOnly) return rankNames(text, memorials, limit);
   const T = norm(text);
   const toks = T.split(' ').filter(Boolean);
   const set = new Set(toks);
@@ -54,6 +57,39 @@ export function rankCandidates(text, memorials, limit = 5) {
     const ra = norm(m.rankAbbr).replace(/ /g, '');
     if (ra && has(ra)) { s += 4; f.push(['Rank', 1]); }
     return { m, score: Math.min(99, s), fields: f };
+  }).filter(x => x.score >= 20).sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+// Name-only matching for memorial walls. A wall photo holds many names on each line, separated by
+// dots or crosses ("RICHARD A CROCKER · TURNER C JOHNSON + DENNIS S PIKE"), so the text is cut
+// into one piece per name and each record is scored against its best piece. That stops a first
+// name from one person and a surname from the next adding up to a false match.
+// Scores: surname 64 (similar 40), + first name 93, + middle initial 99.
+export function nameSegments(text) {
+  return String(text || '').split(/\n|[·•+*|\/]|\s[-–—=~:;]+\s|\s[-–—]|[-–—]\s/).map(norm).filter(t => /[A-Z]{2}/.test(t));
+}
+function rankNames(text, memorials, limit) {
+  const segs = nameSegments(text).map(T => {
+    const toks = T.split(' ').filter(Boolean);
+    return { set: new Set(toks), fuzzy: withJoins(toks).filter(t => t.length >= 3).map(fold) };
+  });
+  if (!segs.length) return [];
+  const near = (seg, w) => { if (w.length < 4) return false; const f = fold(w); return seg.fuzzy.some(t => Math.abs(t.length - f.length) <= 2 && lev(t, f) <= (f.length > 6 ? 2 : 1)); };
+  return memorials.map(m => {
+    const sur = norm(m.surname).replace(/ /g, ''), giv = norm(m.givenName).split(' ')[0] || '', mid = norm(m.middleName);
+    let best = { m, score: 0, fields: [] };
+    if (!sur) return best;
+    for (const seg of segs) {
+      let s = 0; const f = [];
+      if (seg.set.has(sur)) { s += 40; f.push(['Surname', 1]); }
+      else if (near(seg, sur)) { s += 25; f.push(['Surname (similar)', 1]); }
+      else continue;
+      if (giv) { if (seg.set.has(giv) || near(seg, giv)) { s += 18; f.push(['First name', 1]); } else f.push(['First name', 0]); }
+      if (mid) { if (seg.set.has(mid[0]) || seg.set.has(mid)) { s += 4; f.push(['Middle initial', 1]); } else f.push(['Middle initial', 0]); }
+      const score = Math.min(99, Math.round(s * 99 / 62));
+      if (score > best.score) best = { m, score, fields: f };
+    }
+    return best;
   }).filter(x => x.score >= 20).sort((a, b) => b.score - a.score).slice(0, limit);
 }
 

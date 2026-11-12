@@ -6,16 +6,22 @@
 // Required: name (exact; memorials store it as `cemetery` and filters match on it),
 //           short (used in list rows), country, state ('' outside the United States), place.
 // Optional: operator, wars, geo [lat, lng] (fallback for walking directions),
-//           plots / top / gate (schematic plot plan on the grave location page).
+//           plots / top / gate (schematic plot plan on the grave location page),
+//           type: 'cemetery' (default) or 'memorial' (names engraved on a wall, no graves),
+//           scan: what the scan page offers here, any of 'headstone', 'name', 'qr'.
+//                 Leave it out for the default: cemeteries get headstone + name + QR,
+//                 memorials get name only (see scanModes below).
 const ABMC = 'American Battle Monuments Commission';
 const WW1 = ['World War I'], WW2 = ['World War II'];
 
 export const CEMETERIES = {
   // ---- United States ----
   // ABMC memorials to the missing in the United States (names only, no burials)
-  'east-coast-memorial': { name: 'East Coast Memorial', short: 'East Coast Memorial', country: 'United States', state: 'New York', place: 'Battery Park, New York City', operator: ABMC, wars: WW2 },
-  'honolulu-memorial': { name: 'Honolulu Memorial', short: 'Honolulu Memorial', country: 'United States', state: 'Hawaii', place: 'National Memorial Cemetery of the Pacific, Honolulu', operator: ABMC, wars: ['World War II', 'Korean War', 'Vietnam War'] },
-  'west-coast-memorial': { name: 'West Coast Memorial', short: 'West Coast Memorial', country: 'United States', state: 'California', place: 'The Presidio, San Francisco', operator: ABMC, wars: WW2 },
+  'east-coast-memorial': { type: 'memorial', name: 'East Coast Memorial', short: 'East Coast Memorial', country: 'United States', state: 'New York', place: 'Battery Park, New York City', operator: ABMC, wars: WW2 },
+  'honolulu-memorial': { type: 'memorial', name: 'Honolulu Memorial', short: 'Honolulu Memorial', country: 'United States', state: 'Hawaii', place: 'National Memorial Cemetery of the Pacific, Honolulu', operator: ABMC, wars: ['World War II', 'Korean War', 'Vietnam War'] },
+  'west-coast-memorial': { type: 'memorial', name: 'West Coast Memorial', short: 'West Coast Memorial', country: 'United States', state: 'California', place: 'The Presidio, San Francisco', operator: ABMC, wars: WW2 },
+  // National Park Service memorials (names engraved on a wall: scan a name only)
+  'vietnam-veterans-memorial': { type: 'memorial', scan: ['name'], name: 'Vietnam Veterans Memorial', short: 'Vietnam Memorial', country: 'United States', state: 'District of Columbia', place: 'National Mall, Washington, DC', operator: 'National Park Service', wars: ['Vietnam War'], geo: [38.8913, -77.0477] },
   arlington: { name: 'Arlington National Cemetery', short: 'Arlington', country: 'United States', state: 'Virginia', place: 'Arlington, Virginia', operator: 'U.S. Army', geo: [38.8783, -77.0687], plots: ['2', '12', '18', '21', '27', '30', '34', '54', '59', '60'], top: 'Memorial Amphitheater', gate: 'Welcome Center' },
 
   // ---- ABMC overseas cemeteries ----
@@ -58,6 +64,22 @@ export const CEMETERIES = {
 };
 
 export const US = 'United States';
+
+// Scan modes, in the order the scan page shows them.
+export const SCAN_MODES = {
+  headstone: { tab: 'Headstone', title: 'Scan a headstone' },
+  name: { tab: 'Name', title: 'Scan a name' },
+  qr: { tab: 'QR code', title: 'Scan a QR plaque' }
+};
+const DEFAULT_SCAN = { cemetery: ['headstone', 'name', 'qr'], memorial: ['name'] };
+/** True when the site is a memorial wall rather than a cemetery with graves. */
+export const isMemorial = key => (CEMETERIES[key] || {}).type === 'memorial';
+/** Scan modes offered at a site, e.g. ['headstone', 'name', 'qr'] for Arlington, ['name'] for the Vietnam Memorial. */
+export function scanModes(key) {
+  const c = CEMETERIES[key] || {};
+  const list = (c.scan || DEFAULT_SCAN[c.type] || DEFAULT_SCAN.cemetery).filter(m => SCAN_MODES[m]);
+  return list.length ? list : DEFAULT_SCAN.cemetery;
+}
 const byText = (a, b) => a.localeCompare(b);
 const uniq = a => [...new Set(a)];
 const all = () => Object.entries(CEMETERIES);
