@@ -13,12 +13,23 @@ function lev(a, b) {
   return prev[n];
 }
 
+// Letters OCR often swaps on carved stone (C/G, O/Q/0, I/L/1, S/5, B/8) fold to one form for fuzzy compares.
+const FOLD = { G: 'C', Q: 'O', '0': 'O', L: 'I', '1': 'I', '5': 'S', '8': 'B' };
+const fold = w => w.replace(/[GQ0L158]/g, c => FOLD[c]);
+// A stray mark can split a word ("PEREC.ORY"): also try each pair of neighbouring pieces joined.
+function withJoins(toks) {
+  const out = [...toks];
+  for (let i = 0; i + 1 < toks.length; i++) if (/^[A-Z]+$/.test(toks[i] + toks[i + 1])) out.push(toks[i] + toks[i + 1]);
+  return out;
+}
+
 export function rankCandidates(text, memorials, limit = 5) {
   const T = norm(text);
   const toks = T.split(' ').filter(Boolean);
   const set = new Set(toks);
+  const fuzzy = withJoins(toks).filter(t => t.length >= 3).map(fold);
   const has = w => !!w && set.has(w);
-  const near = w => w.length >= 4 && toks.some(t => t.length >= 3 && Math.abs(t.length - w.length) <= 2 && lev(t, w) <= (w.length > 6 ? 2 : 1));
+  const near = w => { if (w.length < 4) return false; const f = fold(w); return fuzzy.some(t => Math.abs(t.length - f.length) <= 2 && lev(t, f) <= (f.length > 6 ? 2 : 1)); };
   const unknownStone = T.includes('KNOWN BUT TO GOD');
   return memorials.map(m => {
     let s = 0; const f = [];
@@ -48,9 +59,16 @@ export function rankCandidates(text, memorials, limit = 5) {
 
 const STOP = new Set(['SGT', 'SSG', 'PVT', 'PFC', 'CPL', 'CPT', 'COL', 'GEN', 'ARMY', 'NAVY', 'USMC', 'USAF', 'USA', 'USN', 'INF', 'DIV', 'REGT', 'WORLD', 'WAR', 'HERE', 'RESTS', 'HONORED', 'GLORY', 'COMRADE', 'ARMS', 'KNOWN', 'BUT', 'GOD', 'THE', 'AND', 'BELOVED', 'WIFE', 'HUSBAND', 'SON', 'DAUGHTER', 'KOREA', 'VIETNAM', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUNE', 'JUL', 'JULY', 'AUG', 'SEP', 'SEPT', 'OCT', 'NOV', 'DEC', 'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'LIEUTENANT', 'SERGEANT', 'PRIVATE', 'CORPORAL', 'CAPTAIN', 'MAJOR', 'COLONEL', 'GENERAL', 'FORCE', 'AIR', 'CORPS', 'MARINE', 'COAST', 'GUARD', 'STAR', 'BRONZE', 'SILVER', 'PURPLE', 'HEART', 'MEDAL']);
 // Words on a headstone that could be a surname, most likely first.
-export function ocrTokens(text, max = 8) {
-  const words = norm(text).split(' ').filter(w => /^[A-Z]{3,}$/.test(w) && !STOP.has(w));
-  return [...new Set(words)].slice(0, max);
+export function ocrTokens(text, max = 10) {
+  const all = norm(text).split(' ').filter(Boolean);
+  const words = all.filter(w => /^[A-Z]{3,}$/.test(w) && !STOP.has(w));
+  // Rejoin a word split by a stray mark when one piece is short, e.g. "PE REGORY" or "PEREC ORY".
+  const joins = [];
+  for (let i = 0; i + 1 < all.length; i++) {
+    const a = all[i], b = all[i + 1], j = a + b;
+    if (/^[A-Z]{5,}$/.test(j) && (a.length <= 3 || b.length <= 3) && !STOP.has(a) && !STOP.has(b)) joins.push(j);
+  }
+  return [...new Set([...words, ...joins])].slice(0, max);
 }
 
 export function guessSurname(text) {

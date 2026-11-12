@@ -59,7 +59,7 @@ body.dark #ocr:not(:empty) { background: var(--color-bg); }
 .seg-dark button { min-height: 38px; padding: 0 16px; border: 0; background: none; color: var(--color-neutral-400); font: inherit; font-size: 13px; cursor: pointer; }
 .seg-dark button + button { border-left: 1px solid color-mix(in srgb, var(--color-neutral-100) 25%, transparent); }
 .seg-dark button.on { background: color-mix(in srgb, var(--color-neutral-100) 16%, transparent); color: var(--color-neutral-100); }
-.finder { position: relative; aspect-ratio: 3 / 4; max-height: 56vh; width: 100%; border-radius: 6px; overflow: hidden; background: var(--color-neutral-800); display: grid; place-items: center; }
+.finder { position: relative; aspect-ratio: 15 / 16; max-height: 45vh; width: 100%; border-radius: 6px; overflow: hidden; background: var(--color-neutral-800); display: grid; place-items: center; }
 .finder img, .finder video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .finder-empty { position: relative; text-align: center; padding: 24px; color: var(--color-neutral-300); font-size: 13.5px; max-width: 270px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .finder-empty p { margin: 0; }
@@ -84,6 +84,28 @@ body.dark #ocr:not(:empty) { background: var(--color-bg); }
 .btn-light-ghost:hover { background: color-mix(in srgb, var(--color-neutral-100) 10%, transparent); }
 .scan-type { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--color-neutral-300); text-decoration: none; font-size: 13px; margin-top: 12px; min-height: 40px; }
 .scan-type:hover { color: var(--color-accent-400); }
+.scan-search { margin-top: 10px; }
+.scan-search .input { background: color-mix(in srgb, var(--color-neutral-100) 8%, transparent); color: var(--color-neutral-100); border-color: color-mix(in srgb, var(--color-neutral-100) 25%, transparent); }
+.scan-search .input::placeholder { color: var(--color-neutral-400); }
+.scan-search svg { color: var(--color-neutral-400); }
+.scan-results { margin-top: 6px; border: 1px solid color-mix(in srgb, var(--color-neutral-100) 16%, transparent); border-radius: 6px; max-height: 46vh; overflow-y: auto; }
+.scan-results .row { padding: 10px 12px; border-bottom-color: color-mix(in srgb, var(--color-neutral-100) 12%, transparent); }
+.scan-results .row:hover { background: color-mix(in srgb, var(--color-neutral-100) 8%, transparent); }
+.scan-results .row .y, .scan-results .row .r, .scan-results .row .b { color: var(--color-neutral-300); }
+.scan-results .sr-msg { margin: 0; padding: 12px; font-size: 13px; color: var(--color-neutral-300); }
+.scan-results .sr-more { display: block; padding: 12px; text-align: center; font-size: 13px; color: var(--color-accent-400); }
+.finder.cropping img { object-fit: contain; }
+.crop-hint { margin: 10px 0 0; font-size: 13px; color: var(--color-neutral-300); text-align: center; }
+.crop-box { position: absolute; z-index: 2; border: 2px solid var(--color-accent-400); box-shadow: 0 0 0 9999px color-mix(in srgb, var(--color-neutral-900) 55%, transparent); touch-action: none; cursor: move; }
+.crop-box i { position: absolute; width: 22px; height: 22px; border: 3px solid var(--color-accent-400); background: none; }
+.crop-box i[data-h="nw"] { left: -4px; top: -4px; border-right: 0; border-bottom: 0; cursor: nwse-resize; }
+.crop-box i[data-h="ne"] { right: -4px; top: -4px; border-left: 0; border-bottom: 0; cursor: nesw-resize; }
+.crop-box i[data-h="sw"] { left: -4px; bottom: -4px; border-right: 0; border-top: 0; cursor: nesw-resize; }
+.crop-box i[data-h="se"] { right: -4px; bottom: -4px; border-left: 0; border-top: 0; cursor: nwse-resize; }
+.crop-box i::after { content: ''; position: absolute; inset: -12px; }
+.progress.indet { overflow: hidden; position: relative; }
+.progress.indet > div { width: 30%; position: absolute; animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { from { left: -30%; } to { left: 100%; } }
 .progress { height: 2px; background: var(--color-divider); margin: 10px 0 6px; }
 .progress > div { height: 2px; background: var(--color-accent); width: 0; transition: width .2s; }
 .ocr-text { font-family: var(--font-heading); font-size: 17px; letter-spacing: .08em; margin-top: 6px; }

@@ -107,10 +107,12 @@ export async function makeFireAPI(config) {
       for (const t of ocrTokens(text)) {
         if (!this._tok.has(t)) {
           const exact = fs.getDocs(fs.query(M(), fs.where('surnameKey', '==', t), fs.limit(500)));
-          const p = t.slice(0, 4);
-          const near = t.length >= 5 ? fs.getDocs(fs.query(M(), fs.where('surnameKey', '>=', p), fs.where('surnameKey', '<=', p + '\uf8ff'), fs.orderBy('surnameKey'), fs.limit(150))) : Promise.resolve({ docs: [] });
-          const [a, b] = await Promise.all([exact, near]);
-          this._tok.set(t, [...a.docs, ...b.docs].map(d => ({ id: d.id, ...d.data() })));
+          // Prefix search for misreads; a first letter OCR often swaps (C/G, O/Q) is tried both ways.
+          const p = t.slice(0, 4), alt = { C: 'G', G: 'C', O: 'Q', Q: 'O' }[p[0]];
+          const pre = q => fs.getDocs(fs.query(M(), fs.where('surnameKey', '>=', q), fs.where('surnameKey', '<=', q + '\uf8ff'), fs.orderBy('surnameKey'), fs.limit(150)));
+          const near = t.length >= 5 ? [pre(p), ...(alt ? [pre(alt + p.slice(1))] : [])] : [];
+          const res = await Promise.all([exact, ...near]);
+          this._tok.set(t, res.flatMap(r => r.docs).map(d => ({ id: d.id, ...d.data() })));
         }
         this._tok.get(t).forEach(m => out.set(m.id, m));
       }
