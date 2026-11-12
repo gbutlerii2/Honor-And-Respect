@@ -260,3 +260,34 @@ body.splash #app { padding-bottom: env(safe-area-inset-bottom); }
 .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, #201f1d 55%, transparent); }
 .modal-card { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; padding: 20px; background: var(--color-bg); color: var(--color-text); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
 .modal-card h2 { margin: 0; font-size: 26px; font-weight: 400; }
+
+/* remembrances & stories */
+.remb { margin-top: 26px; }
+.remb-list { display: flex; flex-direction: column; }
+.remb-item { padding: 12px 0; border-bottom: 1px solid var(--color-divider); }
+.remb-item.is-pending, .remb-item.is-hidden { opacity: .75; }
+.remb-name { font-weight: 600; font-size: 14px; }
+.remb-body { margin-top: 6px; font-size: 14.5px; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.remb-mod .btn { flex: none; min-height: 36px; padding-inline: 14px; }
+.remb-note { background: var(--color-accent-100); color: var(--color-accent-900); border-radius: var(--radius-md); padding: 10px 12px; font-size: 13.5px; margin-bottom: 6px; }
+.remb-form-wrap { margin-top: 14px; }
+.remb-form-wrap > summary { list-style: none; display: flex; justify-content: center; min-height: 46px; }
+.remb-form-wrap > summary::-webkit-details-marker { display: none; }
+.remb-form-wrap[open] > summary { display: none; }
+.remb-form { display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--color-divider); border-radius: var(--radius-md); padding: 14px; }
+.remb-form .field { display: flex; flex-direction: column; gap: 4px; }
+.remb-form textarea { resize: vertical; min-height: 120px; font: inherit; line-height: 1.5; }
+.remb-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.card.remb-setting { flex-direction: row; }
+.remb-setting { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; margin-bottom: 14px; }
+.remb-setting input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
+.remb-filter { margin-bottom: 8px; }
+.remb-admin { padding: 12px 0; border-bottom: 1px solid var(--color-divider); }
+.remb-admin .remb-item { border-bottom: 0; padding-bottom: 0; }
+.remb-filter a { font-size: 13.5px; font-family: inherit; font-weight: 500; }
+.act-filters { flex-wrap: wrap; gap: 8px; padding: 0 0 6px; }
+.act-filters .input { width: auto; }
+.act-day { margin-top: 18px; }
+.act { display: grid; grid-template-columns: 70px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--color-divider); }
+.act-sum { font-size: 13.5px; line-height: 1.45; margin-top: 3px; overflow-wrap: anywhere; }
+.act-time { padding-top: 2px; }

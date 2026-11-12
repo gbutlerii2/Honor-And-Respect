@@ -6,7 +6,9 @@
     { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] },
     { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "cemetery", "order": "ASCENDING" }, { "fieldPath": "branch", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] },
     { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "cemetery", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] },
-    { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "cemetery", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] }
+    { "collectionGroup": "memorials", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "cemetery", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "surnameKey", "order": "ASCENDING" }] },
+    { "collectionGroup": "remembrances", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "remembranceTokens", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "emailHash", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }
