@@ -56,11 +56,17 @@ service cloud.firestore {
 
     // Remembrances & stories: anyone may post without an account. The poster's
     // email goes in remembranceContacts (same doc ID), which only editors and
-    // admins can read, so it is never public. A new post starts "unconfirmed"
-    // (hidden); the confirmRemembrance Cloud Function emails the poster a link
-    // and publishes it when they click (or queues it as "pending" if an admin
-    // has turned on settings/remembrances.requireApproval). Editors and admins
-    // signed in to the site can publish directly.
+    // admins can read, so it is never public. By default a post is published at
+    // once. Admin switches in settings/remembrances can change that:
+    //   requireApproval            -> new posts wait as "pending" for an editor
+    //   requireEmailConfirmation   -> new posts start "unconfirmed" until the poster
+    //                                 opens the emailed link (needs the Cloud Functions
+    //                                 in functions/ and an SMTP account; see README)
+    // Signed-in editors and admins always publish directly.
+    function remSetting(k) {
+      return exists(/databases/$(database)/documents/settings/remembrances)
+        && get(/databases/$(database)/documents/settings/remembrances).data.get(k, false) == true;
+    }
     match /remembrances/{rid} {
       allow read: if resource.data.status == 'published' || isEditor();
       allow create: if request.resource.data.keys().hasOnly(['memorialId', 'name', 'relationship', 'body', 'status', 'createdAt'])
@@ -76,7 +82,9 @@ service cloud.firestore {
         && request.resource.data.body.size() >= 2 && request.resource.data.body.size() <= 3000
         && request.resource.data.createdAt == request.time
         && (request.resource.data.status == 'unconfirmed'
-            || (request.resource.data.status == 'published' && isEditor()))
+            || (request.resource.data.status == 'pending' && !remSetting('requireEmailConfirmation'))
+            || (request.resource.data.status == 'published'
+                && (isEditor() || (!remSetting('requireEmailConfirmation') && !remSetting('requireApproval')))))
         && existsAfter(/databases/$(database)/documents/remembranceContacts/$(rid));
       // Editors approve or hide; only the moderation fields may change.
       allow update: if isEditor()
@@ -99,14 +107,21 @@ service cloud.firestore {
     match /remembranceTokens/{rid} { allow read, write: if false; }
 
     // Activity log: admins read it; signed-in users append entries about their
-    // own actions; Cloud Functions log public posts. Entries are never edited.
+    // own actions; a visitor's post logs itself in the same write as the post
+    // (so the log can't be written on its own); Cloud Functions log email steps.
+    // Entries are never edited.
     match /activity/{aid} {
       allow read: if isAdmin();
-      allow create: if signedIn()
-        && request.resource.data.actorUid == request.auth.uid
-        && request.resource.data.at == request.time
+      allow create: if request.resource.data.at == request.time
         && request.resource.data.type is string && request.resource.data.type.size() <= 40
-        && request.resource.data.summary is string && request.resource.data.summary.size() <= 500;
+        && request.resource.data.summary is string && request.resource.data.summary.size() <= 500
+        && ((signedIn() && request.resource.data.actorUid == request.auth.uid)
+          || (request.resource.data.actorUid == 'visitor'
+            && request.resource.data.type == 'remembrance.posted'
+            && request.resource.data.targetId is string
+            && !exists(/databases/$(database)/documents/remembrances/$(request.resource.data.targetId))
+            && existsAfter(/databases/$(database)/documents/remembrances/$(request.resource.data.targetId))
+            && getAfter(/databases/$(database)/documents/remembrances/$(request.resource.data.targetId)).data.createdAt == request.time));
       allow update, delete: if false;
     }
 

@@ -7,6 +7,9 @@ const FILTER_KEYS = ['cemetery', 'conflict', 'branch', 'status'];
 const clean = o => JSON.parse(JSON.stringify(o ?? null));
 const ms = v => (v && v.toMillis ? v.toMillis() : (typeof v === 'number' ? v : 0));
 
+// Status for a new remembrance, from the admin switches in settings/remembrances (mirrors firestore.rules).
+const newRemembranceStatus = (cfg, u) => (u && ['editor', 'admin'].includes(u.role)) ? 'published' : cfg.requireEmailConfirmation ? 'unconfirmed' : cfg.requireApproval ? 'pending' : 'published';
+
 export class LocalAPI {
   constructor() {
     this.k = 'har-demo-';
@@ -70,18 +73,18 @@ export class LocalAPI {
   async seed(records) { const all = await this.listMemorials(); const byId = Object.fromEntries(all.map(m => [m.id, m])); records.forEach(r => { byId[r.id] = { ...(byId[r.id] || {}), ...clean(r), searchName: searchName(r) }; }); this._set('memorials', Object.values(byId)); return records.length; }
   async markQR() { }
   // remembrances & stories (email kept apart from the public post)
-  async remembranceSettings() { return { requireApproval: false, ...this._get('settings-remembrances', {}) }; }
+  async remembranceSettings() { return { requireApproval: false, requireEmailConfirmation: false, ...this._get('settings-remembrances', {}) }; }
   async setRemembranceSettings(v) { this._set('settings-remembrances', { ...(await this.remembranceSettings()), ...v }); }
   async remembrances(memorialId, all) { return this._get('remembrances', []).filter(r => r.memorialId === memorialId && (all || r.status === 'published')).sort((a, b) => b.createdAt - a.createdAt); }
   async addRemembrance(memorialId, { name, relationship, body, email }, u) {
-    const status = u && ['editor', 'admin'].includes(u.role) ? 'published' : 'unconfirmed';
+    const status = newRemembranceStatus(await this.remembranceSettings(), u);
     const id = 'rm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const list = this._get('remembrances', []); list.push({ id, memorialId, name, relationship, body, status, createdAt: Date.now() }); this._set('remembrances', list);
     const c = this._get('remembranceContacts', {}); c[id] = { email, memorialId, createdAt: Date.now() }; this._set('remembranceContacts', c);
     // Demo mode sends no email; the app offers the confirmation link on screen instead.
     const token = status === 'unconfirmed' ? 'demo' + Math.random().toString(36).slice(2, 12) + 'xxxxxxxxxxxx' : '';
     if (token) { const t = this._get('remembranceTokens', {}); t[id] = token; this._set('remembranceTokens', t); }
-    this._log(status === 'published' ? 'remembrance.posted' : 'remembrance.submitted', `${name} ${status === 'published' ? 'posted' : 'submitted'} a remembrance on ${memorialId}${token ? '; confirmation email sent' : ''}`, { actorName: name, actorUid: u ? u.uid : 'system', memorialId, targetId: id });
+    this._log(token ? 'remembrance.submitted' : 'remembrance.posted', `${name} ${token ? 'submitted' : 'posted'} a remembrance on ${memorialId}${token ? '; confirmation email sent' : status === 'pending' ? ' (awaiting approval)' : ''}`, { actorName: name, actorUid: u ? u.uid : 'system', memorialId, targetId: id });
     return { id, status, demoToken: token };
   }
   async confirmRemembrance(id, token) {
@@ -109,10 +112,18 @@ export class LocalAPI {
   resetDemo() { ['memorials', 'revisions'].forEach(n => localStorage.removeItem(this.k + n)); }
 }
 
-export async function makeFireAPI(config) {
+export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
   const V = '10.12.2', B = `https://www.gstatic.com/firebasejs/${V}/`;
   const [{ initializeApp, deleteApp }, fs, au] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-firestore.js'), import(B + 'firebase-auth.js')]);
   const app = initializeApp(config);
+  // App Check proves requests come from this website, not a bot calling Firestore directly.
+  if (recaptchaSiteKey) {
+    try {
+      if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; // prints a debug token to register in the console
+      const ac = await import(B + 'firebase-app-check.js');
+      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaV3Provider(recaptchaSiteKey), isTokenAutoRefreshEnabled: true });
+    } catch (e) { console.warn('App Check could not start', e); }
+  }
   const db = fs.getFirestore(app);
   const auth = au.getAuth(app);
   const M = () => fs.collection(db, 'memorials');
@@ -248,7 +259,7 @@ export async function makeFireAPI(config) {
     },
     // ---------- remembrances & stories ----------
     // The post (public once published) and the poster's email (editors/admins only) are written together.
-    async remembranceSettings() { const d = await fs.getDoc(fs.doc(db, 'settings', 'remembrances')).catch(() => null); return { requireApproval: false, ...(d && d.exists() ? d.data() : {}) }; },
+    async remembranceSettings() { const d = await fs.getDoc(fs.doc(db, 'settings', 'remembrances')).catch(() => null); return { requireApproval: false, requireEmailConfirmation: false, ...(d && d.exists() ? d.data() : {}) }; },
     async setRemembranceSettings(v) { await fs.setDoc(fs.doc(db, 'settings', 'remembrances'), v, { merge: true }); },
     async remembrances(memorialId, all) {
       const cons = [fs.where('memorialId', '==', memorialId)];
@@ -257,13 +268,18 @@ export async function makeFireAPI(config) {
       return s.docs.map(d => stamp({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt - a.createdAt);
     },
     async addRemembrance(memorialId, { name, relationship, body, email }, u) {
-      const status = u && ['editor', 'admin'].includes(u.role) ? 'published' : 'unconfirmed';
+      const status = newRemembranceStatus(await this.remembranceSettings(), u);
       const ref = fs.doc(fs.collection(db, 'remembrances'));
       const b = fs.writeBatch(db);
       const post = { memorialId, name, body, status, createdAt: fs.serverTimestamp() };
       if (relationship) post.relationship = relationship;
       b.set(ref, post);
       b.set(fs.doc(db, 'remembranceContacts', ref.id), { email, memorialId, createdAt: fs.serverTimestamp() });
+      // Logged in the same write (the confirmation Cloud Function logs unconfirmed posts).
+      if (status !== 'unconfirmed') {
+        const cu = auth.currentUser;
+        b.set(fs.doc(fs.collection(db, 'activity')), { type: 'remembrance.posted', summary: `${name} posted a remembrance on ${memorialId}${status === 'pending' ? ' (awaiting approval)' : ''}`.slice(0, 500), actorUid: cu ? cu.uid : 'visitor', actorName: name, memorialId, targetId: ref.id, at: fs.serverTimestamp() });
+      }
       await b.commit();
       return { id: ref.id, status };
     },

@@ -1,5 +1,6 @@
 // Honor and Respect — Cloud Functions
-// Remembrance email confirmation: a new public post is saved as "unconfirmed"
+// Remembrance email confirmation (optional; used only while the admin switch
+// "Require email confirmation" is on): a new public post is saved as "unconfirmed"
 // (hidden). sendRemembranceConfirmation emails the poster a one-time link;
 // confirmRemembrance publishes the post when they open it. Unconfirmed posts
 // are deleted after 14 days. Every step is written to the admin activity log.
@@ -43,10 +44,9 @@ export const sendRemembranceConfirmation = onDocumentCreated({ document: 'rememb
   if (!post) return;
   const memSnap = await db.doc(`memorials/${post.memorialId}`).get();
   const memName = nameOf(memSnap.data());
-  if (post.status !== 'unconfirmed') {
-    // Posted directly by a signed-in editor or admin.
-    return log('remembrance.posted', `${post.name} posted a remembrance on ${memName}`, { actorName: post.name, memorialId: post.memorialId, targetId: rid });
-  }
+  // Only posts made while "Require email confirmation" is on need an email;
+  // the app logs every other post itself.
+  if (post.status !== 'unconfirmed') return;
   const contact = await db.doc(`remembranceContacts/${rid}`).get();
   const email = contact.exists ? String(contact.data().email || '').trim() : '';
   if (!email) return log('remembrance.error', `No email on file for a remembrance on ${memName}`, { memorialId: post.memorialId, targetId: rid });

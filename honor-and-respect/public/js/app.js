@@ -1,4 +1,4 @@
-import { firebaseConfig, SITE_URL, ENABLE_GOOGLE_SIGNIN, OWNER_EMAIL, USERNAME_DOMAIN } from './firebase-config.js';
+import { firebaseConfig, SITE_URL, ENABLE_GOOGLE_SIGNIN, OWNER_EMAIL, USERNAME_DOMAIN, RECAPTCHA_SITE_KEY } from './firebase-config.js';
 const toEmail = s => { s = String(s || '').trim().toLowerCase(); return s.includes('@') ? s : `${s}@${USERNAME_DOMAIN}`; };
 import { SAMPLE, CEMETERIES, STATUS, view } from './data.js';
 import { US, cemCountries, cemStates, cemIn, cemGroups } from './cemeteries.js';
@@ -670,10 +670,11 @@ async function remembranceSection(m, v) {
       <div class="field"><label for="rbRel">Relationship <span class="muted">(optional)</span></label><select class="input" id="rbRel" name="relationship"><option value="">Choose…</option>${RELATIONSHIPS.map(r => `<option>${esc(r)}</option>`).join('')}</select></div>
       <div class="field"><label for="rbBody">Remembrance or story</label><textarea class="input" id="rbBody" name="body" rows="6" maxlength="3000" required></textarea><span class="small muted" id="rbCount">0 / 3000</span></div>
       <div class="hp" aria-hidden="true"><label>Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label></div>
-      <p class="small muted" style="margin:0">${isEditor() ? 'You are signed in as a moderator, so your post appears straight away.' : 'We will email you a link to confirm your post before it appears.'} Please keep posts respectful. Moderators may remove anything inappropriate.</p>
+      <p class="small muted" style="margin:0"><span id="rbHow">${isEditor() ? 'You are signed in as a moderator, so your post appears straight away.' : ''}</span> Please keep posts respectful. Moderators may remove anything inappropriate.</p>
       <div class="btnrow"><button class="btn btn-primary" type="submit">Post remembrance</button></div>
     </form></details>`);
   const form = $('#rembForm'), opened = { t: 0 };
+  if (!isEditor()) api.remembranceSettings().then(c => { if ($('#rbHow')) $('#rbHow').textContent = c.requireEmailConfirmation ? 'We will email you a link to confirm your post before it appears.' : c.requireApproval ? 'A moderator reviews each post before it appears.' : ''; }).catch(() => { });
   $('#rembWrap').ontoggle = () => { if ($('#rembWrap').open && !opened.t) { opened.t = Date.now(); $('#rbName').value ? $('#rbBody').focus() : $('#rbName').focus(); } };
   $('#rbBody').oninput = e => { $('#rbCount').textContent = e.target.value.length + ' / 3000'; };
   form.onsubmit = async e => {
@@ -697,6 +698,7 @@ async function remembranceSection(m, v) {
       store.set('har-remb-posts', { t: recent.concat(Date.now()) });
       form.reset(); $('#rbCount').textContent = '0 / 3000'; $('#rembWrap').open = false; opened.t = 0;
       await draw(res.status === 'published' ? 'Thank you. Your remembrance has been posted.'
+        : res.status === 'pending' ? 'Thank you. Your remembrance will appear here once a moderator has reviewed it.'
         : `Thank you. We've sent a confirmation link to <strong>${esc(email)}</strong>. Your remembrance will appear here once you open it. If you don't see the email in a few minutes, check your spam folder.`
           + (res.demoToken ? `<br><a href="#/confirm/${encodeURIComponent(res.id)}/${encodeURIComponent(res.demoToken)}">Demo mode: no email is sent. Open the confirmation link</a>` : ''));
       $('#remb').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -965,12 +967,17 @@ async function viewAdmin(tab, params) {
     const [emails, mems] = await Promise.all([api.remembranceEmails(list.map(r => r.id)), api.getMany([...new Set(list.map(r => r.memorialId))])]);
     const cnt = k => all.filter(r => r.status === k).length;
     box.className = 'pad';
-    box.innerHTML = `${isAdmin() ? `<label class="card remb-setting"><input type="checkbox" id="rbApprove" ${cfg.requireApproval ? 'checked' : ''}><span><strong>Require approval before posts appear</strong><br><span class="small muted">Off: once the poster confirms their email, the remembrance shows on the memorial straight away and can be hidden later. On: after confirming, it waits here until an editor approves it.</span></span></label>` : ''}
+    box.innerHTML = `${isAdmin() ? `<label class="card remb-setting"><input type="checkbox" data-rset="requireApproval" ${cfg.requireApproval ? 'checked' : ''}><span><strong>Require approval before posts appear</strong><br><span class="small muted">Off: remembrances show on the memorial straight away and can be hidden later. On: they wait here until an editor approves them.</span></span></label>
+      <label class="card remb-setting"><input type="checkbox" data-rset="requireEmailConfirmation" ${cfg.requireEmailConfirmation ? 'checked' : ''}><span><strong>Require email confirmation</strong><br><span class="small muted">Posters must open a link emailed to them before their remembrance appears. Turn this on only after the email setup in the README is done, or posts will never be confirmed.</span></span></label>` : ''}
       <div class="subtabs remb-filter">${[['', 'All', all.length], ['pending', 'Awaiting review', cnt('pending')], ['unconfirmed', 'Unconfirmed', cnt('unconfirmed')], ['published', 'Published', cnt('published')], ['hidden', 'Hidden', cnt('hidden')]].map(([k, l, n]) => `<a href="#/admin/remembrances${k ? '?s=' + k : ''}" class="${f === k ? 'on' : ''}">${l} (${n})</a>`).join('')}</div>
       ${list.length ? list.map(r => { const mm = mems.find(x => x.id === r.memorialId); return `<div class="remb-admin"><a class="small" href="#/m/${encodeURIComponent(r.memorialId)}">${esc(mm ? view(mm).name : r.memorialId)}</a><div class="small muted">Email: ${emails[r.id] ? `<a href="mailto:${esc(emails[r.id])}">${esc(emails[r.id])}</a>` : 'not available'}</div>${rembHTML(r, true)}</div>`; }).join('') : '<p class="muted">No remembrances here yet.</p>'}
       ${all.length >= 200 ? '<p class="small muted">Showing the 200 most recent.</p>' : ''}`;
     bindRembModeration(list, () => viewAdmin('remembrances', params));
-    if ($('#rbApprove')) $('#rbApprove').onchange = async e => { try { await api.setRemembranceSettings({ requireApproval: e.target.checked }); toast(e.target.checked ? 'Confirmed remembrances now wait for approval' : 'Confirmed remembrances now appear straight away'); api.log('settings.change', `Turned ${e.target.checked ? 'on' : 'off'} approval for remembrances`, { actorName: user.name }).catch(() => { }); } catch (err) { e.target.checked = !e.target.checked; toast('Update failed: ' + (err.code || err.message)); } };
+    $$('[data-rset]').forEach(c => c.onchange = async e => {
+      const k = c.dataset.rset, on = e.target.checked, label = k === 'requireApproval' ? 'approval' : 'email confirmation';
+      try { await api.setRemembranceSettings({ [k]: on }); toast(`Remembrance ${label} turned ${on ? 'on' : 'off'}`); api.log('settings.change', `Turned ${on ? 'on' : 'off'} ${label} for remembrances`, { actorName: user.name }).catch(() => { }); }
+      catch (err) { e.target.checked = !on; toast('Update failed: ' + (err.code || err.message)); }
+    });
   }
   if (tab === 'activity') {
     const day = 864e5, now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -1071,7 +1078,7 @@ async function boot() {
     window.addEventListener('hashchange', route);
     return route();
   }
-  try { api = addActivityLog(await makeFireAPI(firebaseConfig)); }
+  try { api = addActivityLog(await makeFireAPI(firebaseConfig, { recaptchaSiteKey: RECAPTCHA_SITE_KEY })); }
   catch (e) { console.error(e); set('<div class="pad"><h2>Could not connect</h2><p class="muted">Check the Firebase settings in js/firebase-config.js.</p></div>'); return; }
   window.addEventListener('hashchange', route);
   let first = true;

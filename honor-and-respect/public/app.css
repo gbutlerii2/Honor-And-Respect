@@ -278,6 +278,7 @@ body.splash #app { padding-bottom: env(safe-area-inset-bottom); }
 .remb-form .field { display: flex; flex-direction: column; gap: 4px; }
 .remb-form textarea { resize: vertical; min-height: 120px; font: inherit; line-height: 1.5; }
 .remb-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.card.remb-setting { flex-direction: row; }
 .remb-setting { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; margin-bottom: 14px; }
 .remb-setting input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
 .remb-filter { margin-bottom: 8px; }
