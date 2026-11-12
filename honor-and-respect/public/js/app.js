@@ -226,11 +226,13 @@ function viewScan() {
     ${scanMode === 'stone' ? `
       <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle stone-ret"></div><div class="finder-empty" id="liveIdle">${ICON.scan}<p>Live scan reads the inscription while you hold the phone steady. Fill the frame with the stone.</p></div><div class="live-text" id="liveText" hidden></div><div class="live-match" id="liveMatch" hidden></div></div>
       <div class="scan-actions"><button class="btn btn-light" id="startLive">${ICON.scan.replace(/23/g, '18')}Start live scan</button></div>
+      <div class="searchbox scan-search">${ICON.search.replace(/23/g, '17')}<input class="input" id="nameQ" type="search" placeholder="Or search for a name" autocomplete="off" autocapitalize="words" enterkeyhint="search" aria-label="Search for a name"></div>
+      <div class="scan-results" id="nameResults" hidden></div>
       <div class="scan-actions" style="margin-top:8px"><label class="btn btn-light-ghost">${ICON.camera.replace(/22/g, '18')}Take photo<input type="file" accept="image/*" capture="environment" id="cap" hidden></label><label class="btn btn-light-ghost">Library<input type="file" accept="image/*" id="lib" hidden></label></div>`
     : `
       <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle"></div><div class="finder-empty" id="qrIdle">${ICON.qr}<p>Point the camera at a plaque. The iPhone Camera app can also open these codes directly.</p></div></div>
       <div class="scan-actions"><button class="btn btn-light" id="startQR">Start camera</button><label class="btn btn-light-ghost">Scan from photo<input type="file" accept="image/*" id="qrfile" hidden></label></div>`}
-    <a class="scan-type" href="#/register">${ICON.search.replace(/23/g, '16')}Type a name instead</a>
+    ${scanMode === 'qr' ? `<a class="scan-type" href="#/register">${ICON.search.replace(/23/g, '16')}Type a name instead</a>` : ''}
     <a class="scan-about" href="#/welcome">About Honor and Respect</a>
   </section><section id="ocr" class="pad"></section>`);
   $$('[data-mode]').forEach(b => b.onclick = () => { scanMode = b.dataset.mode; stopCamera(); viewScan(); });
@@ -238,16 +240,67 @@ function viewScan() {
   if (scanMode === 'stone') {
     ['#cap', '#lib'].forEach(s => $(s).onchange = e => { if (e.target.files[0]) { stopCamera(); handlePhoto(e.target.files[0]); } });
     $('#startLive').onclick = startLive;
+    wireNameSearch();
   } else {
     $('#startQR').onclick = startQR;
     $('#qrfile').onchange = e => e.target.files[0] && qrFromFile(e.target.files[0]);
   }
 }
-async function prepImage(file, max = 1800) {
-  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
-  const k = Math.min(1, max / Math.max(img.width, img.height));
-  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-  const x = c.getContext('2d'); x.filter = 'grayscale(1) contrast(1.4)'; x.drawImage(img, 0, 0, c.width, c.height);
+// Search-as-you-type on the scan page, limited to the selected cemetery. "Frank Peregory" or "Peregory" both work.
+function wireNameSearch() {
+  const inp = $('#nameQ'), box = $('#nameResults');
+  let t, seq = 0;
+  const words = raw => raw.toUpperCase().replace(/[^A-Z\s'-]/g, ' ').replace(/['-]/g, '').split(/\s+/).filter(Boolean);
+  const givenOk = (m, giv) => giv.every(g => [m.givenName, m.middleName].some(n => String(n || '').toUpperCase().startsWith(g)));
+  const run = async () => {
+    const raw = inp.value.trim(), my = ++seq, cem = cemName() || '';
+    const w = words(raw);
+    if (!w.length || w.join('').length < 2) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    if (!box.innerHTML) box.innerHTML = '<p class="sr-msg">Searching…</p>';
+    try {
+      let list, sur = w[w.length - 1];
+      if (/^[A-Z]{2,4}-[\w.~-]+$/i.test(raw)) { const m = (await api.getMemorial(raw.toUpperCase())) || (await api.getMemorial(raw)); list = m && (!cem || m.cemetery === cem) ? [m] : []; }
+      else if (w.length === 1) list = (await api.search({ q: sur, cemetery: cem, limit: 21 })).items;
+      else {
+        // Surname is usually last; if nothing fits, try it first ("Peregory Frank").
+        list = (await api.search({ q: sur, cemetery: cem, limit: 200 })).items.filter(m => givenOk(m, w.slice(0, -1)));
+        if (!list.length) { sur = w[0]; list = (await api.search({ q: sur, cemetery: cem, limit: 200 })).items.filter(m => givenOk(m, w.slice(1))); }
+      }
+      if (my !== seq) return;
+      const more = list.length > 20;
+      box.innerHTML = list.length
+        ? list.slice(0, 20).map(rowHTML).join('') + (more ? `<a class="sr-more" id="srMore" href="#/register?q=${encodeURIComponent(sur)}">See all in the Register</a>` : '')
+        : `<p class="sr-msg">No one named “${esc(raw)}” in ${esc(cem || 'the register')}.</p>`;
+      if ($('#srMore')) $('#srMore').onclick = () => { reg.cemetery = cem; reg.limit = 50; };
+    } catch (e) { if (my === seq) box.innerHTML = '<p class="sr-msg">Search failed. Try the Register tab.</p>'; console.warn(e); }
+  };
+  inp.oninput = () => { clearTimeout(t); t = setTimeout(run, 250); };
+  inp.onfocus = () => setTimeout(() => inp.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300);
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(t); run(); inp.blur(); } };
+}
+function loadImg(file) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
+// Stretch the darkest 2% to black and the lightest 2% to white. Helps carved letters with no dark fill.
+function autoLevels(c) {
+  const x = c.getContext('2d', { willReadFrequently: true }), d = x.getImageData(0, 0, c.width, c.height), p = d.data, h = new Uint32Array(256);
+  for (let i = 0; i < p.length; i += 4) h[(p[i] * 77 + p[i + 1] * 150 + p[i + 2] * 29) >> 8]++;
+  const n = p.length / 4; let lo = 0, hi = 255, acc = 0;
+  while (lo < 255 && (acc += h[lo]) < n * 0.02) lo++;
+  acc = 0; while (hi > 0 && (acc += h[hi]) < n * 0.02) hi--;
+  if (hi - lo < 10) return c;
+  const k = 255 / (hi - lo);
+  for (let i = 0; i < p.length; i += 4) { const v = Math.max(0, Math.min(255, ((p[i] * 77 + p[i + 1] * 150 + p[i + 2] * 29) >> 8) - lo) * k); p[i] = p[i + 1] = p[i + 2] = v; }
+  x.putImageData(d, 0, 0);
+  return c;
+}
+// Pass 1: as before (max 1800px, grayscale, contrast). Pass 2: enlarge small crops and auto-level.
+function prepCanvas(img, r, strong) {
+  const long = Math.max(r.w, r.h);
+  const k = strong ? Math.min(3, Math.max(1, 1600 / long), 2400 / long) : Math.min(1, 1800 / long);
+  const c = document.createElement('canvas'); c.width = Math.round(r.w * k); c.height = Math.round(r.h * k);
+  const x = c.getContext('2d', { willReadFrequently: true }); x.filter = 'grayscale(1)' + (strong ? '' : ' contrast(1.4)');
+  x.drawImage(img, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+  if (strong) { autoLevels(c); x.filter = 'contrast(1.3)'; x.drawImage(c, 0, 0); }
   return c;
 }
 const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
@@ -275,7 +328,7 @@ async function startLive() {
   lt.innerHTML = '<span class="kicker light">Hold steady…</span>';
   $('#finder').classList.add('live');
   const started = Date.now();
-  let lastTop = null, streak = 0, reads = [];
+  let lastTop = null, streak = 0, reads = [], frame = 0;
   const c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true });
   const restart = () => { viewScan(); $('#startLive').click(); };
   const loop = async () => {
@@ -287,6 +340,7 @@ async function startLive() {
       c.width = Math.round(sw * k); c.height = Math.round(sh * k);
       x.filter = 'grayscale(1) contrast(1.5)';
       x.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
+      if (++frame % 2 === 0) autoLevels(c);
       try {
         const { data } = await worker.recognize(c);
         if (!alive) return;
@@ -323,17 +377,74 @@ async function startLive() {
   };
   loop();
 }
+// Take photo / Library: let the person box the inscription, then read it (with a stronger second pass if needed).
 async function handlePhoto(file) {
-  $('#finder').innerHTML = `<img src="${URL.createObjectURL(file)}" alt="Captured headstone"><div class="scanbar"></div>`;
+  let img;
+  try { img = await loadImg(file); } catch (e) { return toast('Could not open that photo'); }
+  const fin = $('#finder');
+  fin.classList.add('cropping');
+  fin.innerHTML = `<img src="${img.src}" alt="Captured headstone"><div class="crop-box" id="cropBox"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>`;
+  $('#ocr').innerHTML = '';
+  $('#cropActions')?.remove();
+  fin.insertAdjacentHTML('afterend', `<div id="cropActions"><p class="crop-hint">Drag the box over the name and dates. Leaving out grass and sky gives the best read.</p><div class="scan-actions" style="margin-top:8px"><button class="btn btn-light" id="readCrop">Read inscription</button><button class="btn btn-light-ghost" id="readAll">Use whole photo</button></div></div>`);
+  // Displayed image area inside the finder (object-fit: contain).
+  const area = () => { const W = fin.clientWidth, H = fin.clientHeight, k = Math.min(W / img.width, H / img.height); const w = img.width * k, h = img.height * k; return { x: (W - w) / 2, y: (H - h) / 2, w, h, k }; };
+  const box = $('#cropBox');
+  let b;
+  const place = () => { box.style.left = b.x + 'px'; box.style.top = b.y + 'px'; box.style.width = b.w + 'px'; box.style.height = b.h + 'px'; };
+  const reset = () => { const a = area(); b = { x: a.x + a.w * 0.08, y: a.y + a.h * 0.3, w: a.w * 0.84, h: a.h * 0.28 }; place(); };
+  reset();
+  const ro = new ResizeObserver(reset); ro.observe(fin);
+  box.onpointerdown = e => {
+    e.preventDefault(); box.setPointerCapture(e.pointerId);
+    const h = e.target.dataset.h || '', sx = e.clientX, sy = e.clientY, s0 = { ...b }, a = area(), MIN = 36;
+    box.onpointermove = ev => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      let { x, y, w, h: hh } = s0;
+      if (!h) { x = Math.min(Math.max(a.x, x + dx), a.x + a.w - w); y = Math.min(Math.max(a.y, y + dy), a.y + a.h - hh); }
+      else {
+        if (h.includes('w')) { const nx = Math.min(Math.max(a.x, x + dx), x + w - MIN); w += x - nx; x = nx; }
+        if (h.includes('e')) w = Math.min(Math.max(MIN, w + dx), a.x + a.w - x);
+        if (h.includes('n')) { const ny = Math.min(Math.max(a.y, y + dy), y + hh - MIN); hh += y - ny; y = ny; }
+        if (h.includes('s')) hh = Math.min(Math.max(MIN, hh + dy), a.y + a.h - y);
+      }
+      b = { x, y, w, h: hh }; place();
+    };
+    box.onpointerup = box.onpointercancel = () => { box.onpointermove = null; };
+  };
+  const go = whole => {
+    ro.disconnect();
+    const a = area();
+    const r = whole ? { x: 0, y: 0, w: img.width, h: img.height } : { x: Math.round((b.x - a.x) / a.k), y: Math.round((b.y - a.y) / a.k), w: Math.round(b.w / a.k), h: Math.round(b.h / a.k) };
+    r.x = Math.max(0, r.x); r.y = Math.max(0, r.y); r.w = Math.min(img.width - r.x, r.w); r.h = Math.min(img.height - r.y, r.h);
+    fin.classList.remove('cropping');
+    $('#cropActions')?.remove();
+    fin.innerHTML = `<img src="${img.src}" alt="Captured headstone"><div class="scanbar"></div>`;
+    readStone(img, r);
+  };
+  $('#readCrop').onclick = () => go(false);
+  $('#readAll').onclick = () => go(true);
+}
+async function readStone(img, r) {
   const out = $('#ocr');
-  out.innerHTML = `<div class="kicker">Reading inscription</div><div class="progress"><div id="pbar"></div></div><p class="muted small" id="pmsg">Loading text recognition…</p>`;
+  const msg = t => { out.innerHTML = `<div class="kicker">Reading inscription</div><div class="progress indet"><div></div></div><p class="muted small">${t}</p>`; };
+  msg('Loading text recognition…');
+  const best = async text => { const top = rankCandidates(text, scoped(await api.candidates(text)), 1)[0]; return top ? top.score : 0; };
   try {
-    await loadScript(TESS);
-    const canvas = await prepImage(file);
-    const res = await window.Tesseract.recognize(canvas, 'eng', { logger: m => { if (m.status === 'recognizing text' && $('#pbar')) { $('#pbar').style.width = Math.round(m.progress * 100) + '%'; $('#pmsg').textContent = 'Reading… ' + Math.round(m.progress * 100) + '%'; } } });
+    const w = await getWorker();
+    msg('Reading…');
+    const t1 = (await w.recognize(prepCanvas(img, r, false))).data.text || '';
+    let text = t1, score = await best(t1);
+    if (score < 55) {
+      msg('Trying again with stronger contrast…');
+      const t2 = (await w.recognize(prepCanvas(img, r, true))).data.text || '';
+      for (const t of [t2, t1 + '\n' + t2]) { const s2 = await best(t); if (s2 > score) { score = s2; text = t; } }
+      if (!t1.trim()) text = t2;
+    }
     $('.scanbar')?.remove();
-    showCandidates(res.data.text || '');
+    showCandidates(text);
   } catch (e) {
+    console.warn(e);
     $('.scanbar')?.remove();
     showCandidates('');
     toast('Text recognition failed. Type the inscription instead.');
