@@ -413,7 +413,12 @@ try { reg.cemetery = (CEMETERIES[localStorage.getItem('har-cemetery')] || {}).na
 function indexHelp(e, el) {
   console.error(e);
   const link = (String(e.message || '').match(/https:\/\/console\.firebase\.google\.com\S+/) || [])[0];
-  el.innerHTML = `<div class="pad"><p class="muted">${link ? 'This filter combination needs a database index.' : 'Search failed: ' + esc(e.code || e.message)}</p>${link ? `<a class="btn btn-secondary" href="${esc(link)}" target="_blank" rel="noopener">Create the index in Firebase</a><p class="small muted">Admins: indexes take a few minutes to build. Deploying firestore.indexes.json creates them all at once.</p>` : ''}</div>`;
+  // Visitors get a plain message; only admins see the Firebase details and the create-index link.
+  if (!isAdmin()) {
+    el.innerHTML = `<div class="pad"><p class="muted">${link ? 'This combination of filters isn\u2019t available yet. Try removing a filter.' : 'Search isn\u2019t working right now. Please try again in a few minutes.'}</p></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="pad"><p class="muted">${link ? 'Admin: this filter combination needs a database index.' : 'Admin: search failed: ' + esc(e.code || e.message)}</p>${link ? `<a class="btn btn-secondary" href="${esc(link)}" target="_blank" rel="noopener">Create the index in Firebase</a><p class="small muted">Indexes take a few minutes to build. Deploying firestore.indexes.json creates them all at once. Visitors see a plain "not available yet" message instead of this.</p>` : ''}</div>`;
 }
 function viewRegister(params) {
   if (params.has('q')) reg.q = params.get('q');
