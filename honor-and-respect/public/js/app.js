@@ -157,6 +157,7 @@ async function route() {
       if (p[2] === 'records') return viewRecords(p[1]);
       if (p[2] === 'location') return viewLocation(p[1]);
     }
+    if (p[0] === 'confirm' && p[1] && p[2]) return viewConfirm(p[1], p[2]);
     if (p[0] === 'saved') return viewSaved(params);
     if (p[0] === 'account') return viewAccount();
     if (p[0] === 'admin') return p[1] === 'new' ? viewEdit(null) : viewAdmin(p[1] || 'listing', params);
@@ -599,6 +600,7 @@ async function viewMemorial(id) {
         <details class="acc"><summary>Contributed media<span>${media.length}${ICON.down}</span></summary><div class="media">${media.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt=""></a>`).join('')}<a class="add" href="#/m/${enc}/edit">+ Add</a></div></details>
         <details class="acc"><summary>Sources<span>${sources.length}${ICON.down}</span></summary><ol class="sources">${sources.map(s => `<li>${esc(s)}</li>`).join('')}</ol></details>
       </div>
+      <section class="remb" id="remb" aria-labelledby="rembH"><h4 class="sec" id="rembH">Remembrances &amp; stories</h4><div id="rembList" class="muted small">Loading…</div></section>
     </article>
     <nav class="circles">
       <a class="circle accent" href="#/m/${enc}/edit"><span>${ICON.pencil}</span>${editLabel}</a>
@@ -607,6 +609,101 @@ async function viewMemorial(id) {
     </nav>`);
   $('#saveBtn').onclick = () => { const s = store.get('har-saved'); s[id] ? delete s[id] : (s[id] = Date.now()); store.set('har-saved', s); $('#saveBtn').classList.toggle('on', !!s[id]); toast(s[id] ? 'Saved' : 'Removed from saved'); };
   if ($('#qrBtn')) $('#qrBtn').onclick = () => openPrint([m]);
+  remembranceSection(m, v);
+}
+
+// ---------- remembrances & stories ----------
+const RELATIONSHIPS = ['Family member', 'Friend', 'Served together', 'Descendant', 'Visitor', 'Other'];
+const REMB_STATUS = { published: ['Published', 'tag-neutral'], pending: ['Awaiting review', 'tag-accent'], unconfirmed: ['Email not confirmed yet', 'tag-outline'], hidden: ['Hidden', 'tag-outline'] };
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+function rembHTML(r, mod) {
+  const st = REMB_STATUS[r.status] || REMB_STATUS.published;
+  const actions = mod ? `<div class="btnrow remb-mod">${r.status !== 'published' ? `<button class="btn btn-secondary" data-rpub="${esc(r.id)}">${r.status === 'pending' ? 'Approve' : r.status === 'unconfirmed' ? 'Publish anyway' : 'Show again'}</button>` : `<button class="btn btn-secondary" data-rhide="${esc(r.id)}">Hide</button>`}${isAdmin() ? `<button class="btn btn-secondary" data-rdel="${esc(r.id)}">Delete</button>` : ''}</div>` : '';
+  return `<article class="remb-item ${r.status !== 'published' ? 'is-' + esc(r.status) : ''}">
+    <div class="ct"><span class="remb-name">${esc(r.name)}${r.relationship ? ` <em class="small muted">${esc(r.relationship)}</em>` : ''}</span><span class="small muted">${fmtDate(r.createdAt)}</span></div>
+    <div class="remb-body">${esc(r.body)}</div>
+    ${mod && r.status !== 'published' ? `<div class="chips"><span class="tag sm ${st[1]}">${st[0]}</span></div>` : ''}${actions}</article>`;
+}
+function bindRembModeration(list, after) {
+  $$('[data-rpub],[data-rhide],[data-rdel]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.rpub || b.dataset.rhide || b.dataset.rdel;
+    try {
+      const r = list.find(x => x.id === id);
+      if (b.dataset.rdel) { if (!confirm('Delete this remembrance permanently? This cannot be undone.')) return; await api.deleteRemembrance(id, r); toast('Remembrance deleted'); }
+      else { await api.moderateRemembrance(id, b.dataset.rpub ? 'published' : 'hidden', user, r); toast(b.dataset.rpub ? 'Remembrance published' : 'Remembrance hidden'); }
+      after();
+    } catch (e) { toast('Update failed: ' + (e.code || e.message)); }
+  });
+}
+async function viewConfirm(id, token) {
+  set('<div class="pad"><div class="kicker">Remembrances &amp; stories</div><h1 class="display" style="font-size:30px">Confirming your remembrance…</h1></div>');
+  try {
+    const r = await api.confirmRemembrance(id, token);
+    const enc = encodeURIComponent(r.memorialId);
+    set(`<div class="pad"><div class="kicker">Remembrances &amp; stories</div><h1 class="display" style="font-size:30px">${r.status === 'published' ? 'Thank you. Your remembrance is published.' : r.status === 'pending' ? 'Thank you. Your email is confirmed.' : 'This remembrance was already handled.'}</h1>
+      <p class="muted">${r.status === 'published' ? 'It now appears on the memorial for everyone to read.' : r.status === 'pending' ? 'A moderator will review your remembrance shortly, and it will appear on the memorial once approved.' : 'There is nothing more you need to do.'}</p>
+      <a class="btn btn-primary" href="#/m/${enc}">View the memorial</a></div>`);
+  } catch (e) {
+    console.error(e);
+    set(`<div class="pad"><div class="kicker">Remembrances &amp; stories</div><h1 class="display" style="font-size:30px">We couldn't confirm this remembrance</h1><p class="muted">${esc(e.message || 'Please try the link again.')}</p><a class="btn btn-secondary" href="#/register">Search the register</a></div>`);
+  }
+}
+async function remembranceSection(m, v) {
+  const box = $('#remb'); if (!box) return;
+  const mod = isEditor();
+  const draw = async (note) => {
+    let list = [];
+    try { list = await api.remembrances(m.id, mod); } catch (e) { console.error(e); }
+    if (!$('#rembList')) return;
+    const shown = list.filter(r => r.status === 'published').length;
+    $('#rembList').className = 'remb-list';
+    $('#rembList').innerHTML = (note ? `<div class="remb-note" role="status">${note}</div>` : '')
+      + (list.length ? list.map(r => rembHTML(r, mod)).join('') : `<p class="muted small" style="margin:4px 0 0">No remembrances yet. Be the first to share a memory of ${esc(v.name)}.</p>`)
+      + (mod && list.length > shown ? `<p class="small muted">${list.length - shown} not shown publicly. <a href="#/admin/remembrances">Open the remembrances queue</a></p>` : '');
+    bindRembModeration(list, () => draw());
+  };
+  box.insertAdjacentHTML('beforeend', `<details class="remb-form-wrap" id="rembWrap"><summary class="btn btn-primary btn-block">Leave a remembrance or story</summary>
+    <form class="remb-form" id="rembForm" novalidate>
+      <p class="small muted" style="margin:0">Share a memory, a family story or a tribute to ${esc(v.name)}. Your name appears with your post.</p>
+      <div class="field"><label for="rbName">Your name</label><input class="input" id="rbName" name="name" maxlength="80" required autocomplete="name" value="${esc(user && user.name && !String(user.name).includes('@') ? user.name : '')}"></div>
+      <div class="field"><label for="rbEmail">Email</label><input class="input" id="rbEmail" name="email" type="email" maxlength="254" required autocomplete="email" value="${esc(user && user.email && !String(user.email).endsWith('@' + USERNAME_DOMAIN) ? user.email : '')}"><span class="small muted">Required, but never shown publicly. Only site moderators can see it.</span></div>
+      <div class="field"><label for="rbRel">Relationship <span class="muted">(optional)</span></label><select class="input" id="rbRel" name="relationship"><option value="">Choose…</option>${RELATIONSHIPS.map(r => `<option>${esc(r)}</option>`).join('')}</select></div>
+      <div class="field"><label for="rbBody">Remembrance or story</label><textarea class="input" id="rbBody" name="body" rows="6" maxlength="3000" required></textarea><span class="small muted" id="rbCount">0 / 3000</span></div>
+      <div class="hp" aria-hidden="true"><label>Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label></div>
+      <p class="small muted" style="margin:0">${isEditor() ? 'You are signed in as a moderator, so your post appears straight away.' : 'We will email you a link to confirm your post before it appears.'} Please keep posts respectful. Moderators may remove anything inappropriate.</p>
+      <div class="btnrow"><button class="btn btn-primary" type="submit">Post remembrance</button></div>
+    </form></details>`);
+  const form = $('#rembForm'), opened = { t: 0 };
+  $('#rembWrap').ontoggle = () => { if ($('#rembWrap').open && !opened.t) { opened.t = Date.now(); $('#rbName').value ? $('#rbBody').focus() : $('#rbName').focus(); } };
+  $('#rbBody').oninput = e => { $('#rbCount').textContent = e.target.value.length + ' / 3000'; };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const name = String(fd.get('name') || '').trim().replace(/\s+/g, ' ');
+    const email = String(fd.get('email') || '').trim();
+    const relationship = String(fd.get('relationship') || '');
+    const body = String(fd.get('body') || '').trim().replace(/\n{3,}/g, '\n\n');
+    if (fd.get('website')) return; // honeypot: bots fill every field
+    if (!name) return toast('Please enter your name');
+    if (!EMAIL_RE.test(email)) return toast('Please enter a valid email address');
+    if (body.length < 2) return toast('Please write your remembrance');
+    if ((body.match(/https?:\/\/|www\./gi) || []).length > 2) return toast('Please include no more than two links');
+    if (opened.t && Date.now() - opened.t < 3000) return toast('Please take a moment before posting');
+    const recent = (store.get('har-remb-posts').t || []).filter(t => Date.now() - t < 10 * 60e3);
+    if (recent.length >= 3) return toast('You have posted several remembrances. Please try again in a few minutes.');
+    const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
+    try {
+      const res = await api.addRemembrance(m.id, { name, relationship, body, email }, user);
+      store.set('har-remb-posts', { t: recent.concat(Date.now()) });
+      form.reset(); $('#rbCount').textContent = '0 / 3000'; $('#rembWrap').open = false; opened.t = 0;
+      await draw(res.status === 'published' ? 'Thank you. Your remembrance has been posted.'
+        : `Thank you. We've sent a confirmation link to <strong>${esc(email)}</strong>. Your remembrance will appear here once you open it. If you don't see the email in a few minutes, check your spam folder.`
+          + (res.demoToken ? `<br><a href="#/confirm/${encodeURIComponent(res.id)}/${encodeURIComponent(res.demoToken)}">Demo mode: no email is sent. Open the confirmation link</a>` : ''));
+      $('#remb').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) { console.error(err); toast('Could not post: ' + (err.code === 'permission-denied' ? 'please check your entries and try again' : (err.code || err.message))); }
+    btn.disabled = false;
+  };
+  draw();
 }
 
 // ---------- records ----------
@@ -814,8 +911,8 @@ function afterAuth(stay) { renderTabs(location.hash.slice(2)); if (stay || locat
 const adm = { q: '', status: '', cemetery: '', page: 0, sel: {} };
 async function viewAdmin(tab, params) {
   if (!isEditor()) return needAuth('Admin access required');
-  if (!isAdmin() && !['listing', 'review'].includes(tab)) tab = 'listing';
-  const tabs = [['listing', 'Listing'], ['review', 'Review queue']].concat(isAdmin() ? [['users', 'Users'], ['data', 'Data & QR']] : []);
+  if (!isAdmin() && !['listing', 'review', 'remembrances'].includes(tab)) tab = 'listing';
+  const tabs = [['listing', 'Listing'], ['review', 'Review queue'], ['remembrances', 'Remembrances']].concat(isAdmin() ? [['users', 'Users'], ['data', 'Data & QR'], ['activity', 'Activity log']] : []);
   const head = `<div class="pad" style="padding-bottom:6px"><div class="kicker">Honor and Respect</div><h1 class="display" style="font-size:32px">Administration</h1>${api.demo ? '<div class="small muted">Demo mode. Changes are stored in this browser only.</div>' : ''}</div><nav class="admin-tabs">${tabs.map(([k, l]) => `<a href="#/admin/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>`;
   set(head + '<div id="adm" class="loading">Loading…</div>');
   const box = $('#adm');
@@ -861,6 +958,48 @@ async function viewAdmin(tab, params) {
     box.innerHTML = list.length ? list.map(r => { const m = all.find(x => x.id === r.memorialId); const diff = Object.entries(r.changes || {}).map(([k, v]) => `<div class="diff"><span class="k">${esc(k)}</span><span><s>${esc(JSON.stringify(m ? m[k] ?? '' : '').slice(0, 160))}</s><br>${esc(JSON.stringify(v).slice(0, 300))}</span></div>`).join(''); return revHTML(r, `<a href="#/m/${encodeURIComponent(r.memorialId)}" class="small">${esc(m ? view(m).name : r.memorialId)}</a>${diff}`); }).join('') : '<p class="muted">No suggestions awaiting review.</p>';
     bindReview(list, () => viewAdmin('review'));
   }
+  if (tab === 'remembrances') {
+    const f = ['pending', 'unconfirmed', 'published', 'hidden'].includes(params && params.get && params.get('s')) ? params.get('s') : '';
+    const [all, cfg] = await Promise.all([api.remembranceQueue(), api.remembranceSettings()]);
+    const list = f ? all.filter(r => r.status === f) : all;
+    const [emails, mems] = await Promise.all([api.remembranceEmails(list.map(r => r.id)), api.getMany([...new Set(list.map(r => r.memorialId))])]);
+    const cnt = k => all.filter(r => r.status === k).length;
+    box.className = 'pad';
+    box.innerHTML = `${isAdmin() ? `<label class="card remb-setting"><input type="checkbox" id="rbApprove" ${cfg.requireApproval ? 'checked' : ''}><span><strong>Require approval before posts appear</strong><br><span class="small muted">Off: once the poster confirms their email, the remembrance shows on the memorial straight away and can be hidden later. On: after confirming, it waits here until an editor approves it.</span></span></label>` : ''}
+      <div class="subtabs remb-filter">${[['', 'All', all.length], ['pending', 'Awaiting review', cnt('pending')], ['unconfirmed', 'Unconfirmed', cnt('unconfirmed')], ['published', 'Published', cnt('published')], ['hidden', 'Hidden', cnt('hidden')]].map(([k, l, n]) => `<a href="#/admin/remembrances${k ? '?s=' + k : ''}" class="${f === k ? 'on' : ''}">${l} (${n})</a>`).join('')}</div>
+      ${list.length ? list.map(r => { const mm = mems.find(x => x.id === r.memorialId); return `<div class="remb-admin"><a class="small" href="#/m/${encodeURIComponent(r.memorialId)}">${esc(mm ? view(mm).name : r.memorialId)}</a><div class="small muted">Email: ${emails[r.id] ? `<a href="mailto:${esc(emails[r.id])}">${esc(emails[r.id])}</a>` : 'not available'}</div>${rembHTML(r, true)}</div>`; }).join('') : '<p class="muted">No remembrances here yet.</p>'}
+      ${all.length >= 200 ? '<p class="small muted">Showing the 200 most recent.</p>' : ''}`;
+    bindRembModeration(list, () => viewAdmin('remembrances', params));
+    if ($('#rbApprove')) $('#rbApprove').onchange = async e => { try { await api.setRemembranceSettings({ requireApproval: e.target.checked }); toast(e.target.checked ? 'Confirmed remembrances now wait for approval' : 'Confirmed remembrances now appear straight away'); api.log('settings.change', `Turned ${e.target.checked ? 'on' : 'off'} approval for remembrances`, { actorName: user.name }).catch(() => { }); } catch (err) { e.target.checked = !e.target.checked; toast('Update failed: ' + (err.code || err.message)); } };
+  }
+  if (tab === 'activity') {
+    const day = 864e5, now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const range = params.get('r') || '7d', type = params.get('t') || '', q = params.get('q') || '', pick = params.get('d') || '';
+    let from = today - 6 * day, to = today + day;
+    if (range === 'today') from = today;
+    if (range === 'yesterday') { from = today - day; to = today; }
+    if (range === '30d') from = today - 29 * day;
+    if (range === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(pick)) { const [y, mo, d] = pick.split('-').map(Number); from = new Date(y, mo - 1, d).getTime(); to = from + day; }
+    let list = [], err = '';
+    try { list = await api.activity({ from, to, limit: 500 }); } catch (e) { console.error(e); err = e.code === 'failed-precondition' ? 'The activity log needs a Firestore index. Run firebase deploy --only firestore:indexes.' : 'Could not load activity: ' + (e.code || e.message); }
+    const full = list.length >= 500;
+    const ql = q.trim().toLowerCase();
+    list = list.filter(a => (!type || ACT_GROUP(a.type) === type) && (!ql || [a.summary, a.actorName, a.memorialId].join(' ').toLowerCase().includes(ql)));
+    const go = o => { const n = new URLSearchParams({ r: range, t: type, q, d: pick, ...o }); [...n.keys()].forEach(k => !n.get(k) && n.delete(k)); location.hash = '#/admin/activity' + (n.toString() ? '?' + n : ''); };
+    const byDay = {}; list.forEach(a => { const k = new Date(a.at).toDateString(); (byDay[k] = byDay[k] || []).push(a); });
+    box.className = 'pad';
+    box.innerHTML = `<div class="toolbar act-filters">
+        <select class="input" id="acR" aria-label="Date range">${[['today', 'Today'], ['yesterday', 'Yesterday'], ['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['day', 'Choose a day…']].map(([k, l]) => `<option value="${k}" ${range === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <input class="input" type="date" id="acD" value="${esc(pick)}" aria-label="Day" ${range === 'day' ? '' : 'hidden'} max="${new Date(today).toLocaleDateString('en-CA')}">
+        <select class="input" id="acT" aria-label="Type of activity"><option value="">All activity</option>${Object.entries(ACT_GROUPS).map(([k, l]) => `<option value="${k}" ${type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <div class="searchbox" style="flex:1;min-width:180px;margin:0">${ICON.search.replace(/23/g, '17')}<input class="input" id="acQ" type="search" value="${esc(q)}" placeholder="Search names, memorials, details"></div></div>
+      ${err ? `<p class="muted">${esc(err)}</p>` : list.length ? Object.entries(byDay).map(([d, items]) => `<h4 class="sec act-day">${esc(new Date(items[0].at).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}<span class="small muted"> · ${items.length}</span></h4>${items.map(a => `<div class="act"><span class="act-time small muted tnum">${new Date(a.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span><div><div><span class="tag sm ${a.type.startsWith('remembrance') ? 'tag-accent' : 'tag-neutral'}">${esc(ACT_LABEL(a.type))}</span> <span class="small muted">${esc(a.actorName || '')}</span></div><div class="act-sum">${esc(a.summary)}</div>${a.memorialId ? `<a class="small" href="#/m/${encodeURIComponent(a.memorialId)}">Open memorial ${esc(a.memorialId)}</a>` : ''}</div></div>`).join('')}`).join('') : '<p class="muted">No activity in this period.</p>'}
+      ${full ? '<p class="small muted">Showing the 500 most recent entries in this period. Narrow the dates to see older ones.</p>' : ''}`;
+    $('#acR').onchange = e => go({ r: e.target.value, d: e.target.value === 'day' ? (pick || new Date(today).toLocaleDateString('en-CA')) : '' });
+    $('#acD').onchange = e => go({ r: 'day', d: e.target.value });
+    $('#acT').onchange = e => go({ t: e.target.value });
+    let qt; $('#acQ').oninput = e => { clearTimeout(qt); qt = setTimeout(() => go({ q: e.target.value }), 400); };
+  }
   if (tab === 'users') {
     const us = await api.users();
     box.className = '';
@@ -891,16 +1030,48 @@ function openPrint(list) {
   window.open('print.html?mode=qr&base=' + encodeURIComponent(qrBase()), '_blank');
 }
 
+// ---------- activity log ----------
+const ACT_GROUPS = { remembrance: 'Remembrances', memorial: 'Memorial edits', suggestion: 'Suggestions & reviews', user: 'Users & roles', data: 'Data & QR', settings: 'Settings' };
+const ACT_GROUP = t => String(t || '').split('.')[0];
+const ACT_LABEL = t => ({ 'remembrance.submitted': 'Remembrance submitted', 'remembrance.confirmed': 'Remembrance confirmed', 'remembrance.posted': 'Remembrance posted', 'remembrance.published': 'Remembrance published', 'remembrance.hidden': 'Remembrance hidden', 'remembrance.pending': 'Remembrance sent to review', 'remembrance.deleted': 'Remembrance deleted', 'remembrance.throttled': 'Email throttled', 'remembrance.error': 'Email problem', 'remembrance.cleanup': 'Cleanup', 'memorial.saved': 'Memorial saved', 'memorial.deleted': 'Memorial deleted', 'suggestion.submitted': 'Suggestion', 'suggestion.approved': 'Suggestion approved', 'suggestion.rejected': 'Suggestion rejected', 'user.created': 'User added', 'user.role': 'Role changed', 'user.request': 'Role request', 'data.seed': 'Import', 'data.removeSample': 'Sample removed', 'data.rebuildKeys': 'Search keys rebuilt', 'data.qr': 'QR plaques', 'settings.change': 'Setting changed' }[t] || t);
+// Each successful change made through the app is added to the admin activity log.
+const LOGGED = {
+  saveMemorial: ([id, , summary]) => ['memorial.saved', `Saved ${id}${summary ? ': ' + summary : ''}`, { memorialId: id }],
+  suggest: ([id, , summary]) => ['suggestion.submitted', `Suggested an edit to ${id}${summary ? ': ' + summary : ''}`, { memorialId: id }],
+  review: ([rev, approve]) => [approve ? 'suggestion.approved' : 'suggestion.rejected', `${approve ? 'Approved' : 'Rejected'} ${rev.authorName || 'a contributor'}'s suggestion on ${rev.memorialId}: ${rev.summary || ''}`, { memorialId: rev.memorialId, targetId: rev.id }],
+  deleteMemorial: ([id]) => ['memorial.deleted', `Deleted memorial ${id}`, { memorialId: id }],
+  setRole: ([uid, r]) => ['user.role', `Changed a user's role to ${r} (${uid})`, { targetId: uid }],
+  createUser: ([o]) => ['user.created', `Added user ${o.email} as ${o.role}`, {}],
+  requestRole: () => ['user.request', 'Requested editor access', {}],
+  seed: ([recs], n) => ['data.seed', `Imported or loaded ${n ?? recs.length} records`, {}],
+  removeSample: (a, n) => ['data.removeSample', `Removed ${n} sample records`, {}],
+  rebuildKeys: (a, r) => ['data.rebuildKeys', `Rebuilt search keys: checked ${r.seen}, updated ${r.fixed}`, {}],
+  markQR: ([ids]) => ['data.qr', `Printed QR plaques for ${ids.length} memorial${ids.length === 1 ? '' : 's'}${ids.length <= 5 ? ': ' + ids.join(', ') : ''}`, ids.length === 1 ? { memorialId: ids[0] } : {}],
+  moderateRemembrance: ([id, st, , r]) => ['remembrance.' + st, `${st === 'published' ? 'Published' : st === 'hidden' ? 'Hid' : 'Sent to review'} ${r ? r.name + "'s" : 'a'} remembrance${r ? ' on ' + r.memorialId : ''}`, r ? { targetId: id, memorialId: r.memorialId } : { targetId: id }],
+  deleteRemembrance: ([id, r]) => ['remembrance.deleted', `Deleted ${r ? r.name + "'s" : 'a'} remembrance${r ? ' on ' + r.memorialId + ': "' + String(r.body || '').slice(0, 120) + (String(r.body || '').length > 120 ? '…' : '') + '"' : ''}`, r ? { targetId: id, memorialId: r.memorialId } : { targetId: id }]
+};
+function addActivityLog(a) {
+  Object.entries(LOGGED).forEach(([k, fn]) => {
+    const orig = a[k]; if (typeof orig !== 'function') return;
+    a[k] = async function (...args) {
+      const res = await orig.apply(this, args);
+      try { if (user) { const [type, summary, extra] = fn(args, res); this.log(type, summary, { actorName: user.name, ...extra }).catch(e => console.warn('activity log', e)); } } catch (e) { console.warn('activity log', e); }
+      return res;
+    };
+  });
+  return a;
+}
+
 // ---------- boot ----------
 async function boot() {
   if (!configured) {
-    api = new LocalAPI();
+    api = addActivityLog(new LocalAPI());
     user = api.currentUser();
     $('#banner').hidden = false;
     window.addEventListener('hashchange', route);
     return route();
   }
-  try { api = await makeFireAPI(firebaseConfig); }
+  try { api = addActivityLog(await makeFireAPI(firebaseConfig)); }
   catch (e) { console.error(e); set('<div class="pad"><h2>Could not connect</h2><p class="muted">Check the Firebase settings in js/firebase-config.js.</p></div>'); return; }
   window.addEventListener('hashchange', route);
   let first = true;

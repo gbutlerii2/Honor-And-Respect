@@ -1,0 +1,13 @@
+{
+  "name": "honor-and-respect-functions",
+  "private": true,
+  "description": "Cloud Functions for Honor and Respect: remembrance email confirmation and cleanup.",
+  "type": "module",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "firebase-admin": "^14.5.1",
+    "firebase-functions": "^7.4.0",
+    "nodemailer": "^7.0.13"
+  }
+}

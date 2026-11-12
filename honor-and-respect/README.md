@@ -104,6 +104,34 @@ QR codes encode `https://<site>/m/<ID>`. The address field at the top of the pri
 `revisions/{auto}`: memorialId, summary, changes, authorUid, authorName, authorRole, status (pending · published · rejected), createdAt, reviewedBy, reviewedAt
 `users/{uid}`: email, displayName, role, requestedRole, affiliation, requestReason
 `qrCodes/{id}`: memorialId, url, createdBy, createdAt
+`remembrances/{auto}`: memorialId, name, relationship, body, status (unconfirmed · pending · published · hidden), createdAt, confirmedAt, moderatedBy, moderatedAt. Public only when published.
+`remembranceContacts/{same id}`: email, memorialId, createdAt. Editors and admins only; never public.
+`remembranceTokens/{same id}`: hashed confirmation token. Cloud Functions only.
+`activity/{auto}`: type, summary, actorUid, actorName, memorialId, targetId, at. Admins only; never edited.
+`settings/remembrances`: requireApproval (boolean)
+
+## Remembrances & stories
+Every memorial page ends with **Remembrances & stories** and a **Leave a remembrance or story** button. Anyone can post without an account: name, email (required, never shown), an optional relationship and the story itself.
+
+1. The post is saved hidden ("unconfirmed") and the Cloud Function `sendRemembranceConfirmation` emails the poster a link.
+2. Opening the link (`/#/confirm/<id>/<token>`) calls `confirmRemembrance`, which publishes the post. If **Admin → Remembrances → Require approval** is on, it goes to the review queue instead.
+3. Unconfirmed posts are deleted after 14 days (`cleanupUnconfirmedRemembrances`). Links expire after 7 days, and one email address can trigger at most 5 confirmation emails an hour.
+4. Editors and admins see hidden and unconfirmed posts on the memorial and in **Admin → Remembrances**, with the poster's email, and can hide, publish or (admins) delete them. Signed-in editors and admins publish directly without an email.
+
+Spam protection: email confirmation, a hidden honeypot field, a 3-second minimum on the form, at most two links per post, three posts per device per 10 minutes, and Firestore rules that check every field and length.
+
+### One-time email setup
+The site is static, so email goes through Cloud Functions (Blaze plan) and any SMTP provider (SendGrid, Mailgun, Resend, Postmark, or a Google Workspace mailbox).
+1. Create an account with the provider, verify the sending domain `honor-and-respect.com` (it gives you SPF/DKIM DNS records to add), and create an SMTP password or API key.
+2. From this folder, store the connection as a secret:
+   `firebase functions:secrets:set SMTP_URI` and paste e.g. `smtps://apikey:YOUR_KEY@smtp.sendgrid.net:465`
+3. Optional: a different sender or site address goes in `functions/.env`:
+   `MAIL_FROM=Honor and Respect <noreply@honor-and-respect.com>` and `SITE_URL=https://honor-and-respect.com`
+4. Deploy: `cd functions && npm install && cd .. && firebase deploy --only functions,firestore`
+Netlify only deploys the website. Rules, indexes and functions deploy with the Firebase CLI.
+
+## Activity log
+**Admin → Activity log** (admins only) lists recent activity, newest first, grouped by day: remembrances submitted, confirmed, hidden or deleted, memorial edits, suggestions and reviews, user and role changes, imports, QR printing and setting changes. Filter by Today, Yesterday, Last 7 or 30 days or a chosen day, by type, and by text. The app writes an entry after each change made through it; Cloud Functions log visitor posts.
 
 ## How recognition works
 - **Headstone, live scan (default):** the camera reads the area inside the on-screen frame about once a second with Tesseract.js. Recognition happens on the phone and nothing is uploaded. Each read is scored against the register. When the same record ranks first in two reads in a row with a score of 55% or higher, the scan stops and shows the match, with other candidates listed below. It gives up after 30 seconds and suggests taking a photo.

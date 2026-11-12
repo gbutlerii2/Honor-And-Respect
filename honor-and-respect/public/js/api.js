@@ -69,6 +69,38 @@ export class LocalAPI {
   async requestRole(uid, data) { const u = this._get('user', {}); this._set('user', { ...u, requestedRole: 'editor', ...data }); }
   async seed(records) { const all = await this.listMemorials(); const byId = Object.fromEntries(all.map(m => [m.id, m])); records.forEach(r => { byId[r.id] = { ...(byId[r.id] || {}), ...clean(r), searchName: searchName(r) }; }); this._set('memorials', Object.values(byId)); return records.length; }
   async markQR() { }
+  // remembrances & stories (email kept apart from the public post)
+  async remembranceSettings() { return { requireApproval: false, ...this._get('settings-remembrances', {}) }; }
+  async setRemembranceSettings(v) { this._set('settings-remembrances', { ...(await this.remembranceSettings()), ...v }); }
+  async remembrances(memorialId, all) { return this._get('remembrances', []).filter(r => r.memorialId === memorialId && (all || r.status === 'published')).sort((a, b) => b.createdAt - a.createdAt); }
+  async addRemembrance(memorialId, { name, relationship, body, email }, u) {
+    const status = u && ['editor', 'admin'].includes(u.role) ? 'published' : 'unconfirmed';
+    const id = 'rm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const list = this._get('remembrances', []); list.push({ id, memorialId, name, relationship, body, status, createdAt: Date.now() }); this._set('remembrances', list);
+    const c = this._get('remembranceContacts', {}); c[id] = { email, memorialId, createdAt: Date.now() }; this._set('remembranceContacts', c);
+    // Demo mode sends no email; the app offers the confirmation link on screen instead.
+    const token = status === 'unconfirmed' ? 'demo' + Math.random().toString(36).slice(2, 12) + 'xxxxxxxxxxxx' : '';
+    if (token) { const t = this._get('remembranceTokens', {}); t[id] = token; this._set('remembranceTokens', t); }
+    this._log(status === 'published' ? 'remembrance.posted' : 'remembrance.submitted', `${name} ${status === 'published' ? 'posted' : 'submitted'} a remembrance on ${memorialId}${token ? '; confirmation email sent' : ''}`, { actorName: name, actorUid: u ? u.uid : 'system', memorialId, targetId: id });
+    return { id, status, demoToken: token };
+  }
+  async confirmRemembrance(id, token) {
+    const t = this._get('remembranceTokens', {}); const list = this._get('remembrances', []); const r = list.find(x => x.id === id);
+    if (!r || !t[id]) throw Object.assign(new Error('This remembrance could not be found. It may have expired or been removed.'), { code: 'functions/not-found' });
+    if (t[id] !== token) throw Object.assign(new Error('This confirmation link is not valid.'), { code: 'functions/permission-denied' });
+    if (r.status !== 'unconfirmed') return { status: r.status, memorialId: r.memorialId, already: true };
+    r.status = (await this.remembranceSettings()).requireApproval ? 'pending' : 'published'; this._set('remembrances', list);
+    this._log('remembrance.confirmed', `${r.name} confirmed their remembrance${r.status === 'pending' ? ' (awaiting approval)' : ' (now public)'}`, { actorName: r.name, actorUid: 'system', memorialId: r.memorialId, targetId: id });
+    return { status: r.status, memorialId: r.memorialId };
+  }
+  // activity log
+  _log(type, summary, extra = {}) { const all = this._get('activity', []); all.push({ id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type, summary: String(summary).slice(0, 500), at: Date.now(), ...extra }); this._set('activity', all.slice(-2000)); }
+  async log(type, summary, extra = {}) { const u = this.currentUser(); this._log(type, summary, { actorUid: u ? u.uid : 'system', actorName: u ? u.name : 'Unknown', ...extra }); }
+  async activity({ from, to, limit = 500 }) { return this._get('activity', []).filter(a => a.at >= from && a.at < to).sort((a, b) => b.at - a.at).slice(0, limit); }
+  async remembranceQueue() { return this._get('remembrances', []).sort((a, b) => b.createdAt - a.createdAt).slice(0, 200); }
+  async remembranceEmails(ids) { const c = this._get('remembranceContacts', {}); return Object.fromEntries(ids.map(id => [id, c[id] ? c[id].email : ''])); }
+  async moderateRemembrance(id, status, u) { const list = this._get('remembrances', []); const r = list.find(x => x.id === id); if (r) { Object.assign(r, { status, moderatedBy: u.uid, moderatedAt: Date.now() }); this._set('remembrances', list); } }
+  async deleteRemembrance(id) { this._set('remembrances', this._get('remembrances', []).filter(r => r.id !== id)); const c = this._get('remembranceContacts', {}); delete c[id]; this._set('remembranceContacts', c); }
   // demo auth
   currentUser() { return this._get('user', null); }
   signIn(email, name, forceRole) { const u = { uid: 'demo', email, name: name || email.split('@')[0], role: forceRole || this._get('user', {})?.role || 'contributor' }; this._set('user', u); return u; }
@@ -214,6 +246,46 @@ export async function makeFireAPI(config) {
       }
       cache = null; return n;
     },
+    // ---------- remembrances & stories ----------
+    // The post (public once published) and the poster's email (editors/admins only) are written together.
+    async remembranceSettings() { const d = await fs.getDoc(fs.doc(db, 'settings', 'remembrances')).catch(() => null); return { requireApproval: false, ...(d && d.exists() ? d.data() : {}) }; },
+    async setRemembranceSettings(v) { await fs.setDoc(fs.doc(db, 'settings', 'remembrances'), v, { merge: true }); },
+    async remembrances(memorialId, all) {
+      const cons = [fs.where('memorialId', '==', memorialId)];
+      if (!all) cons.push(fs.where('status', '==', 'published'));
+      const s = await fs.getDocs(fs.query(fs.collection(db, 'remembrances'), ...cons));
+      return s.docs.map(d => stamp({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt - a.createdAt);
+    },
+    async addRemembrance(memorialId, { name, relationship, body, email }, u) {
+      const status = u && ['editor', 'admin'].includes(u.role) ? 'published' : 'unconfirmed';
+      const ref = fs.doc(fs.collection(db, 'remembrances'));
+      const b = fs.writeBatch(db);
+      const post = { memorialId, name, body, status, createdAt: fs.serverTimestamp() };
+      if (relationship) post.relationship = relationship;
+      b.set(ref, post);
+      b.set(fs.doc(db, 'remembranceContacts', ref.id), { email, memorialId, createdAt: fs.serverTimestamp() });
+      await b.commit();
+      return { id: ref.id, status };
+    },
+    // Called from the link in the confirmation email (Cloud Function confirmRemembrance).
+    async confirmRemembrance(id, token) {
+      const fn = await import(B + 'firebase-functions.js');
+      const res = await fn.httpsCallable(fn.getFunctions(app), 'confirmRemembrance')({ id, token });
+      return res.data;
+    },
+    // ---------- activity log ----------
+    async log(type, summary, extra = {}) {
+      const cu = auth.currentUser; if (!cu) return;
+      await fs.addDoc(fs.collection(db, 'activity'), { type, summary: String(summary).slice(0, 500), actorName: extra.actorName || cu.displayName || cu.email || '', at: fs.serverTimestamp(), ...extra, actorUid: cu.uid });
+    },
+    async activity({ from, to, limit = 500 }) {
+      const s = await fs.getDocs(fs.query(fs.collection(db, 'activity'), fs.where('at', '>=', fs.Timestamp.fromMillis(from)), fs.where('at', '<', fs.Timestamp.fromMillis(to)), fs.orderBy('at', 'desc'), fs.limit(limit)));
+      return s.docs.map(d => { const a = d.data(); return { id: d.id, ...a, at: ms(a.at) }; });
+    },
+    async remembranceQueue() { const s = await fs.getDocs(fs.query(fs.collection(db, 'remembrances'), fs.orderBy('createdAt', 'desc'), fs.limit(200))); return s.docs.map(d => stamp({ id: d.id, ...d.data() })); },
+    async remembranceEmails(ids) { const out = {}; await Promise.all(ids.map(async id => { const d = await fs.getDoc(fs.doc(db, 'remembranceContacts', id)).catch(() => null); out[id] = d && d.exists() ? d.data().email : ''; })); return out; },
+    async moderateRemembrance(id, status, u) { await fs.updateDoc(fs.doc(db, 'remembrances', id), { status, moderatedBy: u.uid, moderatedAt: fs.serverTimestamp() }); },
+    async deleteRemembrance(id) { const b = fs.writeBatch(db); b.delete(fs.doc(db, 'remembrances', id)); b.delete(fs.doc(db, 'remembranceContacts', id)); await b.commit(); },
     async markQR(ids, u, base) { const b = fs.writeBatch(db); ids.forEach(id => b.set(fs.doc(db, 'qrCodes', id), { memorialId: id, url: base + '/m/' + id, createdBy: u.uid, createdAt: fs.serverTimestamp() }, { merge: true })); await b.commit(); }
   };
 }

@@ -54,6 +54,68 @@ service cloud.firestore {
       allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
 
+    // Remembrances & stories: anyone may post without an account. The poster's
+    // email goes in remembranceContacts (same doc ID), which only editors and
+    // admins can read, so it is never public. A new post starts "unconfirmed"
+    // (hidden); the confirmRemembrance Cloud Function emails the poster a link
+    // and publishes it when they click (or queues it as "pending" if an admin
+    // has turned on settings/remembrances.requireApproval). Editors and admins
+    // signed in to the site can publish directly.
+    match /remembrances/{rid} {
+      allow read: if resource.data.status == 'published' || isEditor();
+      allow create: if request.resource.data.keys().hasOnly(['memorialId', 'name', 'relationship', 'body', 'status', 'createdAt'])
+        && request.resource.data.keys().hasAll(['memorialId', 'name', 'body', 'status', 'createdAt'])
+        && request.resource.data.memorialId is string
+        && request.resource.data.memorialId.size() > 0 && request.resource.data.memorialId.size() <= 200
+        && exists(/databases/$(database)/documents/memorials/$(request.resource.data.memorialId))
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && (!('relationship' in request.resource.data)
+            || (request.resource.data.relationship is string && request.resource.data.relationship.size() <= 40))
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 2 && request.resource.data.body.size() <= 3000
+        && request.resource.data.createdAt == request.time
+        && (request.resource.data.status == 'unconfirmed'
+            || (request.resource.data.status == 'published' && isEditor()))
+        && existsAfter(/databases/$(database)/documents/remembranceContacts/$(rid));
+      // Editors approve or hide; only the moderation fields may change.
+      allow update: if isEditor()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'moderatedBy', 'moderatedAt'])
+        && request.resource.data.status in ['pending', 'published', 'hidden'];
+      allow delete: if isAdmin();
+    }
+    match /remembranceContacts/{rid} {
+      allow read: if isEditor();
+      allow create: if request.resource.data.keys().hasOnly(['email', 'memorialId', 'createdAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 254
+        && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && request.resource.data.createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/remembrances/$(rid))
+        && getAfter(/databases/$(database)/documents/remembrances/$(rid)).data.memorialId == request.resource.data.memorialId;
+      allow delete: if isAdmin();
+    }
+    // Confirmation tokens: Cloud Functions only.
+    match /remembranceTokens/{rid} { allow read, write: if false; }
+
+    // Activity log: admins read it; signed-in users append entries about their
+    // own actions; Cloud Functions log public posts. Entries are never edited.
+    match /activity/{aid} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.at == request.time
+        && request.resource.data.type is string && request.resource.data.type.size() <= 40
+        && request.resource.data.summary is string && request.resource.data.summary.size() <= 500;
+      allow update, delete: if false;
+    }
+
+    // Site settings (public read so the app and rules can check them).
+    match /settings/{key} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // QR plaque registry (printed codes).
     match /qrCodes/{code} {
       allow read: if true;
