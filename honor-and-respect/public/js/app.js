@@ -270,6 +270,7 @@ function viewScan() {
     <div class="cem-bar"><span class="cem-name">${esc(cemName())}</span><button class="cem-change" id="cemChange" type="button">change</button></div>
     ${ocr ? `
       <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle ${nameMode() ? 'name-ret' : 'stone-ret'}"></div><div class="finder-empty${nameMode() ? ' below' : ''}" id="liveIdle">${nameMode() ? '' : ICON.scan}<p>${idle}</p></div><div class="live-text" id="liveText" hidden></div><div class="live-match" id="liveMatch" hidden></div></div>
+      <div class="zoom-row" id="zoomRow" hidden><span aria-hidden="true">−</span><input type="range" id="zoom" min="1" max="4" step="0.1" value="1" aria-label="Zoom"><span aria-hidden="true">+</span><span class="zoom-val" id="zoomVal">1×</span></div>
       <div class="scan-actions"><button class="btn btn-light" id="startLive">${ICON.scan.replace(/23/g, '18')}Start live scan</button></div>
       <div class="searchbox scan-search">${ICON.search.replace(/23/g, '17')}<input class="input" id="nameQ" type="search" placeholder="Or search for a name" autocomplete="off" autocapitalize="words" enterkeyhint="search" aria-label="Search for a name"></div>
       <div class="scan-results" id="nameResults" hidden></div>
@@ -372,6 +373,32 @@ async function startLive() {
   btn.onclick = () => { stopCamera(); viewScan(); };
   lt.innerHTML = '<span class="kicker light">Hold steady…</span>';
   $('#finder').classList.add('live');
+  // Zoom: the camera's own zoom where the phone supports it, otherwise a digital zoom of the
+  // picture. Either way the window and the guide stay the same size; pinch or use the slider.
+  const track = stream.getVideoTracks()[0];
+  const caps = (track.getCapabilities && track.getCapabilities()) || {};
+  const hw = caps.zoom && caps.zoom.max > caps.zoom.min ? caps.zoom : null;
+  let zoom = 1;
+  const zr = $('#zoom'), zv = $('#zoomVal'), fin = $('#finder');
+  if (hw) { zr.min = hw.min; zr.max = Math.min(hw.max, 8); zr.step = hw.step || 0.1; zr.value = hw.min; }
+  $('#zoomRow').hidden = false;
+  const setZoom = z => {
+    z = Math.min(+zr.max, Math.max(+zr.min, z)); zr.value = z; zv.textContent = (Math.round(z * 10) / 10) + '×';
+    if (hw) { zoom = 1; track.applyConstraints({ advanced: [{ zoom: z }] }).catch(() => { }); }
+    else { zoom = z; v.style.transform = z > 1 ? `scale(${z})` : ''; }
+  };
+  zr.oninput = () => setZoom(+zr.value);
+  const pts = new Map(); let pinch0 = null;
+  fin.onpointerdown = e => { pts.set(e.pointerId, e); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), z: +zr.value }; } };
+  fin.onpointermove = e => { if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e); if (pinch0 && pts.size === 2) { const [a, b] = [...pts.values()]; setZoom(pinch0.z * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch0.d); } };
+  fin.onpointerup = fin.onpointercancel = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null; };
+  // The part of the camera frame inside the on-screen guide, allowing for object-fit: cover and digital zoom.
+  const guideRect = (vw, vh) => {
+    const F = fin.getBoundingClientRect(), G = $('.reticle', fin).getBoundingClientRect();
+    const k = Math.max(F.width / vw, F.height / vh) * zoom;
+    const x0 = (vw - F.width / k) / 2, y0 = (vh - F.height / k) / 2;
+    return [x0 + (G.left - F.left) / k, y0 + (G.top - F.top) / k, G.width / k, G.height / k];
+  };
   const started = Date.now();
   let lastTop = null, streak = 0, reads = [], frame = 0;
   const c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true });
@@ -381,8 +408,9 @@ async function startLive() {
     if (v.readyState >= 2 && v.videoWidth) {
       const vw = v.videoWidth, vh = v.videoHeight;
       // Read only what is inside the guide: the stone outline, or the one-line band in name mode.
-      const [sx, sy, sw, sh] = nameMode() ? [vw * 0.06, vh * 0.36, vw * 0.88, vh * 0.28] : [vw * 0.12, vh * 0.1, vw * 0.76, vh * 0.8];
-      const k = Math.min(1, 1200 / sw);
+      const [sx, sy, sw, sh] = guideRect(vw, vh);
+      // Enlarge a small crop (a thin band, or a zoomed-in frame) so letters are tall enough for OCR.
+      const k = Math.min(1200 / sw, Math.max(1, 90 / sh));
       c.width = Math.round(sw * k); c.height = Math.round(sh * k);
       x.filter = 'grayscale(1) contrast(1.5)';
       x.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
@@ -446,7 +474,7 @@ async function handlePhoto(file) {
   const box = $('#cropBox');
   let b;
   const place = () => { box.style.left = b.x + 'px'; box.style.top = b.y + 'px'; box.style.width = b.w + 'px'; box.style.height = b.h + 'px'; };
-  const reset = () => { const a = area(); b = nameMode() ? { x: a.x + a.w * 0.1, y: a.y + a.h * 0.42, w: a.w * 0.8, h: a.h * 0.16 } : { x: a.x + a.w * 0.08, y: a.y + a.h * 0.3, w: a.w * 0.84, h: a.h * 0.28 }; place(); };
+  const reset = () => { const a = area(); b = nameMode() ? { x: a.x + a.w * 0.04, y: a.y + a.h * 0.45, w: a.w * 0.92, h: a.h * 0.1 } : { x: a.x + a.w * 0.08, y: a.y + a.h * 0.3, w: a.w * 0.84, h: a.h * 0.28 }; place(); };
   reset();
   const ro = new ResizeObserver(reset); ro.observe(fin);
   box.onpointerdown = e => {
