@@ -209,7 +209,9 @@ node import-abmc.mjs upload                        # the rest
 ## Importing the Vietnam Veterans Memorial names (58,220)
 `scripts/import-vietnam.mjs` loads every name on The Wall from the National Archives' **Vietnam Conflict Extract Data File** (Defense Casualty Analysis System, as of April 29, 2008, NAID 2240992, https://catalog.archives.gov/id/2240992). The Archives marks it "Use: Unrestricted". The file gives each name's **panel and line** on The Wall (`63W 014`), plus rank, branch, unit, hometown, dates of birth and casualty, and casualty province. The file's first column (service number, often a Social Security number) is never read into the app.
 
-catalog.archives.gov can't be reached from the cloud machines, so run it on your computer:
+**Easiest (no installs):** download **DCAS.VN.EXT08.DAT** from the catalog page in your browser, then in the app open **Admin → Data & QR → Import Vietnam Veterans Memorial names** and choose the file. It is converted in the browser and written in batches of 2,000 (a few minutes); if it stops, choose the file again and it carries on. The conversion code is `public/js/vietnam.js`.
+
+**Or with Node** (catalog.archives.gov can't be reached from the cloud machines, so on your computer):
 
 ```
 cd honor-and-respect/scripts
