@@ -1131,12 +1131,22 @@ async function viewAdmin(tab, params) {
       <div class="card"><div class="card-title">Rebuild search keys</div><p class="card-body">Run once after updating, and after any import that didn’t go through the app or the import script. Records missing search keys don’t appear in the Register or scan results.</p><button class="btn btn-primary" id="rekey">Rebuild search keys</button><div class="small muted" id="rekeyMsg"></div></div>
       <div class="card"><div class="card-title">Remove sample data</div><p class="card-body">Deletes only the fictional test records. Real and imported records are untouched. You can load them again at any time.</p><button class="btn btn-secondary" id="unseed">Remove sample data</button></div>
       <div class="card"><div class="card-title">Print test kit</div><p class="card-body">Printable test headstones for OCR, plus QR plaques for every sample record. QR codes point to <strong>${esc(qrBase())}</strong>.</p><a class="btn btn-primary" href="print.html?base=${encodeURIComponent(qrBase())}" target="_blank" rel="noopener">Open print kit</a></div>
-      <div class="card"><div class="card-title">Import Vietnam Veterans Memorial names</div><p class="card-body">All 58,220 names on The Wall with panel and line, from the National Archives. 1. Download <strong>DCAS.VN.EXT08.DAT</strong> (24 MB) from the <a href="${DCAS_PAGE}" target="_blank" rel="noopener">National Archives catalog page</a>. 2. Choose it here. It is read in this browser and written to the register in batches; keep this page open until it finishes (a few minutes). If it stops, choose the file again and it carries on.</p><label class="btn btn-primary">Choose DCAS file<input type="file" accept=".dat,.DAT,.txt,text/plain" id="vvmFile" hidden></label><div class="small muted" id="vvmMsg"></div></div>
+      <div class="card"><div class="card-title">Import Vietnam Veterans Memorial names</div><p class="card-body">All 58,220 names on The Wall with panel and line, from the National Archives. 1. Download <strong>DCAS.VN.EXT08.DAT</strong> (24 MB) from the <a href="${DCAS_PAGE}" target="_blank" rel="noopener">National Archives catalog page</a>. 2. Choose it here. It is read in this browser and written to the register in batches; keep this page open until it finishes (a few minutes). If it stops, choose the file again and it carries on.</p><p class="card-body small">Have the Wall of Faces links file (<strong>vvmf-wall-of-faces-links.json</strong>)? Add it first and each name links straight to its Wall of Faces page in the same write. If the names are already imported, load the links file with Import JSON below instead.</p><div class="btnrow" style="justify-content:flex-start"><label class="btn btn-secondary">Add links file (optional)<input type="file" accept=".json,application/json" id="vvmLinks" hidden></label><label class="btn btn-primary">Choose DCAS file<input type="file" accept=".dat,.DAT,.txt,text/plain" id="vvmFile" hidden></label></div><div class="small muted" id="vvmMsg"></div></div>
       <div class="card"><div class="card-title">Import JSON</div><p class="card-body">An array of memorial objects. Each needs an <code>id</code>; other fields follow the schema in the README. Existing IDs are merged.</p><label class="btn btn-secondary">Choose file<input type="file" accept=".json,application/json" id="imp" hidden></label></div>
       <div class="card"><div class="card-title">Export</div><p class="card-body">Download every memorial as JSON for backup or bulk editing.</p><button class="btn btn-secondary" id="exp">Download JSON</button></div></div>`;
     $('#seed').onclick = async () => { if (!confirm(`Write ${SAMPLE.length} sample records?`)) return; try { const n = await api.seed(SAMPLE); toast(n + ' sample records loaded'); } catch (e) { toast('Seed failed: ' + (e.code || e.message)); } };
     $('#rekey').onclick = async () => { const b = $('#rekey'); b.disabled = true; try { const r = await api.rebuildKeys((s, f) => { $('#rekeyMsg').textContent = `Checked ${s.toLocaleString()} · updated ${f.toLocaleString()}`; }); $('#rekeyMsg').textContent = `Done. Checked ${r.seen.toLocaleString()}, updated ${r.fixed.toLocaleString()}.`; toast('Search keys rebuilt'); } catch (e) { toast('Rebuild failed: ' + (e.code || e.message)); } b.disabled = false; };
     $('#unseed').onclick = async () => { if (!confirm('Delete all sample records?')) return; try { const n = await api.removeSample(); toast(n ? n + ' sample records removed' : 'No sample records found'); } catch (e) { toast('Remove failed: ' + (e.code || e.message)); } };
+    let vvmLinks = null;
+    $('#vvmLinks').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try {
+        const arr = JSON.parse(await f.text());
+        vvmLinks = new Map(arr.filter(x => x && x.id && x.record && x.record.url).map(x => [x.id, x.record]));
+        $('#vvmMsg').textContent = `${vvmLinks.size.toLocaleString()} Wall of Faces links ready. Now choose the DCAS file.`;
+      } catch (err) { vvmLinks = null; toast('Could not read the links file: ' + err.message); }
+      finally { e.target.value = ''; }
+    };
     $('#vvmFile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       const msg = t => { $('#vvmMsg').textContent = t; };
@@ -1144,6 +1154,7 @@ async function viewAdmin(tab, params) {
         msg('Reading the file…');
         const list = convertDCAS(new TextDecoder('latin1').decode(await f.arrayBuffer()), new Date().toISOString().slice(0, 10));
         if (list.length < 1000) throw new Error(`Only ${list.length} names found. Is this DCAS.VN.EXT08.DAT?`);
+        if (vvmLinks) list.forEach(m => { const l = vvmLinks.get(m.id); if (l) m.record = { ...m.record, ...l }; });
         const KEY = 'har-vvm-import';
         let prog = {}; try { prog = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { }
         let done = prog.total === list.length && prog.done < list.length ? prog.done : 0;
