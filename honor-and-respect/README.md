@@ -104,6 +104,45 @@ QR codes encode `https://<site>/m/<ID>`. The address field at the top of the pri
 `revisions/{auto}`: memorialId, summary, changes, authorUid, authorName, authorRole, status (pending · published · rejected), createdAt, reviewedBy, reviewedAt
 `users/{uid}`: email, displayName, role, requestedRole, affiliation, requestReason
 `qrCodes/{id}`: memorialId, url, createdBy, createdAt
+`remembrances/{auto}`: memorialId, name, relationship, body, status (unconfirmed · pending · published · hidden), createdAt, confirmedAt, moderatedBy, moderatedAt. Public only when published.
+`remembranceContacts/{same id}`: email, memorialId, createdAt. Editors and admins only; never public.
+`remembranceTokens/{same id}`: hashed confirmation token. Cloud Functions only.
+`activity/{auto}`: type, summary, actorUid, actorName, memorialId, targetId, at. Admins only; never edited.
+`settings/remembrances`: requireApproval (boolean)
+
+## Remembrances & stories
+Every memorial page ends with **Remembrances & stories** and a **Leave a remembrance or story** button. Anyone can post without an account: name, email (required, never shown), an optional relationship and the story itself. Emails are stored in `remembranceContacts`, which only editors and admins can read.
+
+By default a post appears straight away. **Admin → Remembrances** lists every post with the poster's email; editors can hide or publish, admins can also delete. Two switches there (admins only) change what happens to new posts:
+- **Require approval**: posts wait in the queue until an editor approves them.
+- **Require email confirmation**: posts stay hidden until the poster opens a link emailed to them. This needs the email setup below; leave it off until then.
+
+Signed-in editors and admins always publish directly.
+
+Spam protection: Firestore rules check every field and length and that the memorial exists; a hidden honeypot field; a 3-second minimum on the form; at most two links per post; three posts per device per 10 minutes; optional invisible reCAPTCHA (see **Bot protection**) and optional email confirmation.
+
+### Bot protection (reCAPTCHA via Firebase App Check)
+Invisible to visitors. Once enforced, Firestore rejects any request that doesn't come from the real website, so bots can't post by calling the database directly.
+1. Go to https://www.google.com/recaptcha/admin/create, choose **reCAPTCHA v3**, and add the domains `honor-and-respect.com`, `honor-and-respect.netlify.app` and `netlify.app` (for deploy previews).
+2. Firebase console → **App Check** → **Apps** → your web app → **reCAPTCHA** → paste the **secret key** → Save.
+3. Paste the **site key** into `RECAPTCHA_SITE_KEY` in `public/js/firebase-config.js` and deploy.
+4. Watch **App Check → APIs → Cloud Firestore** for a day or two. When nearly all requests show as verified, click **Enforce**. Don't enforce Authentication (the admin "Add a user" screen uses a second app instance without App Check).
+5. Testing on localhost: the browser console prints a debug token; add it under App Check → Apps → ⋮ → Manage debug tokens.
+The import scripts use the Admin SDK and aren't affected.
+
+### Email confirmation (optional, later)
+Needs the Cloud Functions in `functions/` (Blaze plan) and any SMTP provider (SendGrid, Mailgun, Resend, Postmark or a Google Workspace mailbox).
+1. Create an account with the provider, verify the sending domain `honor-and-respect.com` (add its SPF/DKIM DNS records), and create an SMTP password or API key.
+2. From this folder: `firebase functions:secrets:set SMTP_URI` and paste e.g. `smtps://apikey:YOUR_KEY@smtp.sendgrid.net:465`
+3. Optional, in `functions/.env`: `MAIL_FROM=Honor and Respect <noreply@honor-and-respect.com>` and `SITE_URL=https://honor-and-respect.com`
+4. Deploy: `cd functions && npm install && cd .. && firebase deploy --only functions,firestore`
+5. Turn on **Require email confirmation** in Admin → Remembrances.
+How it works: `sendRemembranceConfirmation` emails a one-time link (`/#/confirm/<id>/<token>`, valid 7 days, at most 5 emails per address per hour); `confirmRemembrance` publishes the post (or queues it if approval is on); `cleanupUnconfirmedRemembrances` deletes unconfirmed posts after 14 days.
+
+**Deploying rules:** Netlify only deploys the website. After merging, run `firebase deploy --only firestore` (rules and indexes) or the live form will be refused.
+
+## Activity log
+**Admin → Activity log** (admins only) lists recent activity, newest first, grouped by day: remembrances submitted, confirmed, hidden or deleted, memorial edits, suggestions and reviews, user and role changes, imports, QR printing and setting changes. Filter by Today, Yesterday, Last 7 or 30 days or a chosen day, by type, and by text. The app writes an entry after each change made through it, and each visitor's post is logged in the same write as the post.
 
 ## How recognition works
 - **Headstone, live scan (default):** the camera reads the area inside the on-screen frame about once a second with Tesseract.js. Recognition happens on the phone and nothing is uploaded. Each read is scored against the register. When the same record ranks first in two reads in a row with a score of 55% or higher, the scan stops and shows the match, with other candidates listed below. It gives up after 30 seconds and suggests taking a photo.

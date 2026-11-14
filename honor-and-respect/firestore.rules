@@ -54,6 +54,83 @@ service cloud.firestore {
       allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
 
+    // Remembrances & stories: anyone may post without an account. The poster's
+    // email goes in remembranceContacts (same doc ID), which only editors and
+    // admins can read, so it is never public. By default a post is published at
+    // once. Admin switches in settings/remembrances can change that:
+    //   requireApproval            -> new posts wait as "pending" for an editor
+    //   requireEmailConfirmation   -> new posts start "unconfirmed" until the poster
+    //                                 opens the emailed link (needs the Cloud Functions
+    //                                 in functions/ and an SMTP account; see README)
+    // Signed-in editors and admins always publish directly.
+    function remSetting(k) {
+      return exists(/databases/$(database)/documents/settings/remembrances)
+        && get(/databases/$(database)/documents/settings/remembrances).data.get(k, false) == true;
+    }
+    match /remembrances/{rid} {
+      allow read: if resource.data.status == 'published' || isEditor();
+      allow create: if request.resource.data.keys().hasOnly(['memorialId', 'name', 'relationship', 'body', 'status', 'createdAt'])
+        && request.resource.data.keys().hasAll(['memorialId', 'name', 'body', 'status', 'createdAt'])
+        && request.resource.data.memorialId is string
+        && request.resource.data.memorialId.size() > 0 && request.resource.data.memorialId.size() <= 200
+        && exists(/databases/$(database)/documents/memorials/$(request.resource.data.memorialId))
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && (!('relationship' in request.resource.data)
+            || (request.resource.data.relationship is string && request.resource.data.relationship.size() <= 40))
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 2 && request.resource.data.body.size() <= 3000
+        && request.resource.data.createdAt == request.time
+        && (request.resource.data.status == 'unconfirmed'
+            || (request.resource.data.status == 'pending' && !remSetting('requireEmailConfirmation'))
+            || (request.resource.data.status == 'published'
+                && (isEditor() || (!remSetting('requireEmailConfirmation') && !remSetting('requireApproval')))))
+        && existsAfter(/databases/$(database)/documents/remembranceContacts/$(rid));
+      // Editors approve or hide; only the moderation fields may change.
+      allow update: if isEditor()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'moderatedBy', 'moderatedAt'])
+        && request.resource.data.status in ['pending', 'published', 'hidden'];
+      allow delete: if isAdmin();
+    }
+    match /remembranceContacts/{rid} {
+      allow read: if isEditor();
+      allow create: if request.resource.data.keys().hasOnly(['email', 'memorialId', 'createdAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 254
+        && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && request.resource.data.createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/remembrances/$(rid))
+        && getAfter(/databases/$(database)/documents/remembrances/$(rid)).data.memorialId == request.resource.data.memorialId;
+      allow delete: if isAdmin();
+    }
+    // Confirmation tokens: Cloud Functions only.
+    match /remembranceTokens/{rid} { allow read, write: if false; }
+
+    // Activity log: admins read it; signed-in users append entries about their
+    // own actions; a visitor's post logs itself in the same write as the post
+    // (so the log can't be written on its own); Cloud Functions log email steps.
+    // Entries are never edited.
+    match /activity/{aid} {
+      allow read: if isAdmin();
+      allow create: if request.resource.data.at == request.time
+        && request.resource.data.type is string && request.resource.data.type.size() <= 40
+        && request.resource.data.summary is string && request.resource.data.summary.size() <= 500
+        && ((signedIn() && request.resource.data.actorUid == request.auth.uid)
+          || (request.resource.data.actorUid == 'visitor'
+            && request.resource.data.type == 'remembrance.posted'
+            && request.resource.data.targetId is string
+            && !exists(/databases/$(database)/documents/remembrances/$(request.resource.data.targetId))
+            && existsAfter(/databases/$(database)/documents/remembrances/$(request.resource.data.targetId))
+            && getAfter(/databases/$(database)/documents/remembrances/$(request.resource.data.targetId)).data.createdAt == request.time));
+      allow update, delete: if false;
+    }
+
+    // Site settings (public read so the app and rules can check them).
+    match /settings/{key} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // QR plaque registry (printed codes).
     match /qrCodes/{code} {
       allow read: if true;
