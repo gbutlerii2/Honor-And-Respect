@@ -17,7 +17,7 @@ honor-and-respect/
 ```
 
 ## Welcome page and cemetery selection
-First-time visitors land on a welcome page (`#/welcome`) with an About section and a **Select Cemetery** dropdown: Normandy American Cemetery, Brittany American Cemetery (both in Normandy) and Arlington National Cemetery. The choice is remembered on the device. The scan page then shows the cemetery name above the scan window with a **change** link that pops the selector up again. Scan matches are limited to the selected cemetery, and the Register starts filtered to it. QR plaque links (`/m/<ID>`) skip the welcome page. **Admin → Listing** has a cemetery filter.
+First-time visitors land on a welcome page (`#/welcome`) with an About section and a **Select Cemetery or Memorial** picker (Country, then State in the US, then site): the ABMC cemeteries and memorials, Arlington National Cemetery and the Vietnam Veterans Memorial. The choice is remembered on the device. The scan page then shows the cemetery name above the scan window with a **change** link that pops the selector up again. Scan matches are limited to the selected cemetery, and the Register starts filtered to it. QR plaque links (`/m/<ID>`) skip the welcome page. **Admin → Listing** has a cemetery filter.
 
 **Hero photo:** the welcome page shows a drawn illustration until you add a photo at `public/img/normandy-cemetery.jpg`. Then set the photographer credit in `HERO.credit` near the top of the welcome section in `js/app.js`. Use your own photo or one whose licence allows reuse, and note that the cemetery's architecture is protected by French copyright, so prefer images of the rows of graves rather than the memorial.
 
@@ -148,6 +148,13 @@ How it works: `sendRemembranceConfirmation` emails a one-time link (`/#/confirm/
 - **Headstone, live scan (default):** the camera reads the area inside the on-screen frame about once a second with Tesseract.js. Recognition happens on the phone and nothing is uploaded. Each read is scored against the register. When the same record ranks first in two reads in a row with a score of 55% or higher, the scan stops and shows the match, with other candidates listed below. It gives up after 30 seconds and suggests taking a photo.
 - **Headstone, photo:** *Take photo* or *Library* runs the same recognition on a still image and shows ranked candidates. The user can correct the recognized text, and the matches update as they type.
 - **QR:** live camera scanning with jsQR, or the iPhone Camera app opens `/m/<ID>` directly.
+- **Name (memorials):** for names engraved on a wall, the frame is a one-line band and only name fields count. The text is cut into one piece per name at the dots and crosses between names, so a first name from one person and a surname from the next never add up to a false match. A record needs its surname and first name in the same piece to reach the 75% auto-match level. Several names can be found in one read; the live scan then lists them all.
+
+### Scan modes per site
+What the scan page offers depends on the selected site, set in `public/js/cemeteries.js`:
+- Cemeteries (the default) offer **Headstone**, **Name** and **QR code**. Arlington and Normandy work this way.
+- Sites with `type: 'memorial'` default to **Name** only, titled "Scan a name". The Vietnam Veterans Memorial and ABMC's East Coast, West Coast and Honolulu memorials are set up this way.
+- To override, give a site its own list, e.g. `scan: ['name', 'qr']`. Modes are `headstone`, `name` and `qr`.
 
 ## Importing Arlington National Cemetery (~400,000 records)
 Run this once from your own computer. It uses Arlington's official public API, and `scripts/import-anc.mjs` does the work.
@@ -198,6 +205,23 @@ node import-abmc.mjs upload                        # the rest
 **How long it takes:** `list` is quick (Normandy + Brittany is about 32 requests; every cemetery is about 450). `details` is one request per soldier, about 2 seconds apart: Normandy + Brittany (about 15,850 names) takes 8–9 hours, and every ABMC site (about 224,600) would take about 5 days, so run it cemetery by cemetery, overnight. You can `convert` and `upload` after `list` alone; those records get blank placeholder fields (`section`, `row`, `site`, `location`, `deathDate`, `awards`, `missing: null`, `detailsFetched: false`) and lack the grave location and date of death until `details` has run and you convert and upload again (delete `data/abmc/upload-state.json` first).
 
 **What each record gets:** name, rank, branch, unit and division, service number, state entered service from, war, cemetery, plot/row/grave (or "Tablets of the Missing" with `missing: true`), date of death, awards, and the ABMC citation. IDs look like `ABMC-<ABMC record id>`, so re-running keeps QR plaques stable and keeps anything added in the app.
+
+## Importing the Vietnam Veterans Memorial names (58,220)
+`scripts/import-vietnam.mjs` loads every name on The Wall from the National Archives' **Vietnam Conflict Extract Data File** (Defense Casualty Analysis System, as of April 29, 2008, NAID 2240992, https://catalog.archives.gov/id/2240992). The Archives marks it "Use: Unrestricted". The file gives each name's **panel and line** on The Wall (`63W 014`), plus rank, branch, unit, hometown, dates of birth and casualty, and casualty province. The file's first column (service number, often a Social Security number) is never read into the app.
+
+catalog.archives.gov can't be reached from the cloud machines, so run it on your computer:
+
+```
+cd honor-and-respect/scripts
+node import-vietnam.mjs download            # 24 MB, one request → data/vietnam/DCAS.VN.EXT08.DAT
+node import-vietnam.mjs convert             # builds data/vietnam/memorials.ndjson
+node import-vietnam.mjs upload --limit 200  # test a small batch, check it in the app
+node import-vietnam.mjs upload              # the rest (a few minutes)
+```
+
+If the download is refused, open the catalog page in a browser, download **DCAS.VN.EXT08.DAT**, and save it in `scripts/data/vietnam/`.
+
+IDs are built from the Wall location and name, e.g. `VVM-63W-14-AADLAND-GL`, so re-running keeps QR codes and anything added in the app. `cemeteryKey` is `vietnam-veterans-memorial`, `location` reads `Panel 63W · Line 14` (`section` = panel, `row` = line), and `wallName` holds the name as engraved (`GERALD L AADLAND`). Each record's service-record link opens a search for that name on the VVMF Wall of Faces (https://www.vvmf.org/Wall-of-Faces/), which has photos and remembrances; nothing is copied from VVMF.
 
 ## Before scaling to the full register (~400,000 records)
 Search now runs in the database rather than on the phone. The register searches by surname prefix with filters, scans look up only the surnames read from the stone, and the admin listing pages through 100 records at a time. That works for the full Arlington import. For typo-tolerant full-text search later (e.g. finding "Haskens" when someone types "Haskins"), add Algolia or Typesense, both available as Firebase extensions.

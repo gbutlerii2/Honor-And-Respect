@@ -2,7 +2,7 @@
   "name": "honor-and-respect-import",
   "private": true,
   "type": "module",
-  "description": "One-time imports of Arlington (ANC) and ABMC overseas cemetery burial records into Firestore",
+  "description": "One-time imports of Arlington (ANC), ABMC overseas cemetery and Vietnam Veterans Memorial records into Firestore",
   "scripts": {
     "probe": "node import-anc.mjs probe",
     "download": "node import-anc.mjs download",
@@ -12,11 +12,16 @@
     "abmc:list": "node import-abmc.mjs list",
     "abmc:details": "node import-abmc.mjs details",
     "abmc:convert": "node import-abmc.mjs convert",
-    "abmc:upload": "node import-abmc.mjs upload"
+    "abmc:upload": "node import-abmc.mjs upload",
+    "vietnam:download": "node import-vietnam.mjs download",
+    "vietnam:convert": "node import-vietnam.mjs convert",
+    "vietnam:upload": "node import-vietnam.mjs upload"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
     "playwright": "^1.47.0"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

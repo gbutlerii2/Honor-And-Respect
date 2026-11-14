@@ -103,6 +103,11 @@ export class LocalAPI {
   async remembranceQueue() { return this._get('remembrances', []).sort((a, b) => b.createdAt - a.createdAt).slice(0, 200); }
   async remembranceEmails(ids) { const c = this._get('remembranceContacts', {}); return Object.fromEntries(ids.map(id => [id, c[id] ? c[id].email : ''])); }
   async moderateRemembrance(id, status, u) { const list = this._get('remembrances', []); const r = list.find(x => x.id === id); if (r) { Object.assign(r, { status, moderatedBy: u.uid, moderatedAt: Date.now() }); this._set('remembrances', list); } }
+  // requests to add a cemetery or memorial (admins review them in Admin → Site requests)
+  async addSiteRequest(r) { const list = this._get('siteRequests', []); const u = this.currentUser(); const id = 'sr' + Date.now().toString(36); list.push({ id, ...r, status: 'new', createdAt: Date.now(), ...(u ? { uid: u.uid } : {}) }); this._set('siteRequests', list); return id; }
+  async siteRequests() { return this._get('siteRequests', []).sort((a, b) => b.createdAt - a.createdAt).slice(0, 300); }
+  async updateSiteRequest(id, v, u) { const list = this._get('siteRequests', []); const r = list.find(x => x.id === id); if (r) { Object.assign(r, v, { updatedAt: Date.now(), updatedBy: u.uid }); this._set('siteRequests', list); } }
+  async deleteSiteRequest(id) { this._set('siteRequests', this._get('siteRequests', []).filter(r => r.id !== id)); }
   async deleteRemembrance(id) { this._set('remembrances', this._get('remembrances', []).filter(r => r.id !== id)); const c = this._get('remembranceContacts', {}); delete c[id]; this._set('remembranceContacts', c); }
   // demo auth
   currentUser() { return this._get('user', null); }
@@ -144,20 +149,24 @@ export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
       return { items: s.docs.map(d => ({ id: d.id, ...d.data() })) };
     },
     // Pull only records whose surname matches words read from the stone.
-    async candidates(text) {
+    // cemetery (optional): only that site's records, so a common surname (SMITH) at a large
+    // site isn't crowded out by the same surname elsewhere in the register.
+    async candidates(text, cemetery) {
       this._tok = this._tok || new Map();
       const out = new Map();
+      const at = cemetery ? [fs.where('cemetery', '==', cemetery)] : [];
       for (const t of ocrTokens(text)) {
-        if (!this._tok.has(t)) {
-          const exact = fs.getDocs(fs.query(M(), fs.where('surnameKey', '==', t), fs.limit(500)));
+        const ck = (cemetery || '') + '|' + t;
+        if (!this._tok.has(ck)) {
+          const exact = fs.getDocs(fs.query(M(), ...at, fs.where('surnameKey', '==', t), fs.limit(500)));
           // Prefix search for misreads; a first letter OCR often swaps (C/G, O/Q) is tried both ways.
           const p = t.slice(0, 4), alt = { C: 'G', G: 'C', O: 'Q', Q: 'O' }[p[0]];
-          const pre = q => fs.getDocs(fs.query(M(), fs.where('surnameKey', '>=', q), fs.where('surnameKey', '<=', q + '\uf8ff'), fs.orderBy('surnameKey'), fs.limit(150)));
+          const pre = q => fs.getDocs(fs.query(M(), ...at, fs.where('surnameKey', '>=', q), fs.where('surnameKey', '<=', q + '\uf8ff'), fs.orderBy('surnameKey'), fs.limit(150)));
           const near = t.length >= 5 ? [pre(p), ...(alt ? [pre(alt + p.slice(1))] : [])] : [];
           const res = await Promise.all([exact, ...near]);
-          this._tok.set(t, res.flatMap(r => r.docs).map(d => ({ id: d.id, ...d.data() })));
+          this._tok.set(ck, res.flatMap(r => r.docs).map(d => ({ id: d.id, ...d.data() })));
         }
-        this._tok.get(t).forEach(m => out.set(m.id, m));
+        this._tok.get(ck).forEach(m => out.set(m.id, m));
       }
       return [...out.values()];
     },
@@ -301,6 +310,11 @@ export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
     async remembranceQueue() { const s = await fs.getDocs(fs.query(fs.collection(db, 'remembrances'), fs.orderBy('createdAt', 'desc'), fs.limit(200))); return s.docs.map(d => stamp({ id: d.id, ...d.data() })); },
     async remembranceEmails(ids) { const out = {}; await Promise.all(ids.map(async id => { const d = await fs.getDoc(fs.doc(db, 'remembranceContacts', id)).catch(() => null); out[id] = d && d.exists() ? d.data().email : ''; })); return out; },
     async moderateRemembrance(id, status, u) { await fs.updateDoc(fs.doc(db, 'remembrances', id), { status, moderatedBy: u.uid, moderatedAt: fs.serverTimestamp() }); },
+    // ---------- requests to add a cemetery or memorial ----------
+    async addSiteRequest(r) { const cu = auth.currentUser; const ref = await fs.addDoc(fs.collection(db, 'siteRequests'), { ...r, status: 'new', createdAt: fs.serverTimestamp(), ...(cu ? { uid: cu.uid } : {}) }); return ref.id; },
+    async siteRequests() { const s = await fs.getDocs(fs.query(fs.collection(db, 'siteRequests'), fs.orderBy('createdAt', 'desc'), fs.limit(300))); return s.docs.map(d => stamp({ id: d.id, ...d.data() })); },
+    async updateSiteRequest(id, v, u) { await fs.updateDoc(fs.doc(db, 'siteRequests', id), { ...v, updatedAt: fs.serverTimestamp(), updatedBy: u.uid }); },
+    async deleteSiteRequest(id) { await fs.deleteDoc(fs.doc(db, 'siteRequests', id)); },
     async deleteRemembrance(id) { const b = fs.writeBatch(db); b.delete(fs.doc(db, 'remembrances', id)); b.delete(fs.doc(db, 'remembranceContacts', id)); await b.commit(); },
     async markQR(ids, u, base) { const b = fs.writeBatch(db); ids.forEach(id => b.set(fs.doc(db, 'qrCodes', id), { memorialId: id, url: base + '/m/' + id, createdBy: u.uid, createdAt: fs.serverTimestamp() }, { merge: true })); await b.commit(); }
   };

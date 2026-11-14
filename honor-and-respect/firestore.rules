@@ -125,6 +125,25 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Requests to add a cemetery or memorial: anyone may send one (no account);
+    // only admins can read, update (status, note) or delete them.
+    match /siteRequests/{rid} {
+      allow read, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(['name', 'place', 'link', 'details', 'requester', 'email', 'status', 'createdAt', 'uid'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 1 && request.resource.data.name.size() <= 200
+        && request.resource.data.place is string && request.resource.data.place.size() <= 200
+        && request.resource.data.get('link', '') is string && request.resource.data.get('link', '').size() <= 500
+        && request.resource.data.get('details', '') is string && request.resource.data.get('details', '').size() <= 2000
+        && request.resource.data.get('requester', '') is string && request.resource.data.get('requester', '').size() <= 120
+        && request.resource.data.get('email', '') is string && request.resource.data.get('email', '').size() <= 200
+        && request.resource.data.status == 'new'
+        && request.resource.data.createdAt == request.time
+        && (!('uid' in request.resource.data) || (signedIn() && request.resource.data.uid == request.auth.uid));
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt', 'updatedBy'])
+        && request.resource.data.status in ['new', 'planned', 'added', 'declined'];
+    }
+
     // Site settings (public read so the app and rules can check them).
     match /settings/{key} {
       allow read: if true;
