@@ -148,6 +148,7 @@ async function route() {
   const p = h.split('/').map(decodeURIComponent);
   try {
     if (p[0] === 'welcome') return viewWelcome();
+    if (p[0] === 'request-site') return viewSiteRequest();
     if (p[0] === 'scan') return viewScan();
     if (p[0] === 'register') return viewRegister(params);
     if (p[0] === 'm' && p[1]) {
@@ -203,9 +204,10 @@ function viewWelcome() {
       <div class="bio">
         <p>Honor and Respect helps visitors learn the stories of the men and women who rest in America’s military cemeteries or are named on its war memorials. Point your phone at a headstone or an engraved name, or scan a QR plaque, and the register opens that service member’s memorial page: name, rank, unit, hometown and dates of service, linked to public records from the American Battle Monuments Commission, Arlington National Cemetery and the National Archives.</p>
         <p>The register is a shared effort. Families, historians and volunteers can add photographs, biographies and sources, and an editor reviews every change before it appears, so each record stays accurate and respectful.</p>
-        <p>Use it to plan a visit, to find a relative, or simply to pause at a stone and learn who lies there. Choose a cemetery or memorial above to begin.</p>
+        <p>Use it to plan a visit, to find a relative, or simply to pause at a stone or a name on a wall and learn who it honors. Choose a cemetery or memorial above to begin.</p>
       </div>
       <div class="btnrow center"><a class="linkbtn" href="guide.html">User guide</a></div>
+      <div class="btnrow center"><a class="linkbtn" href="#/request-site">Request to add a cemetery or memorial</a></div>
     </div></section>`);
   const img = $('#heroImg');
   img.onload = () => { img.hidden = false; $('.hero-art').style.display = 'none'; if (HERO.credit) { const c = $('#heroCredit'); c.textContent = HERO.credit; c.hidden = false; } };
@@ -214,6 +216,34 @@ function viewWelcome() {
   let picked = '';
   wireCascade('cemPick', cur, k => { picked = k; go.disabled = !k; });
   go.onclick = () => { if (!picked) return; setCem(picked); if (/^#\/?scan$/.test(location.hash)) route(); else location.hash = '#/scan'; };
+}
+
+// ---------- request a cemetery or memorial ----------
+// Anyone can ask for a site to be added. Requests go to Admin → Site requests (admins only).
+function viewSiteRequest() {
+  const u = user;
+  set(`<header class="topbar">${backBtn('Back')}</header><div class="pad">
+    <div class="kicker">Honor and Respect</div><h1 class="display" style="font-size:30px">Request a cemetery or memorial</h1>
+    <p class="muted">Tell us about a military cemetery or a memorial with engraved names that you would like to see here. We review every request.</p>
+    <form id="srForm" class="card" style="gap:12px;margin-top:14px">
+      <div class="field"><label for="srName">Cemetery or memorial name</label><input class="input" id="srName" name="name" required maxlength="200" placeholder="e.g. Korean War Veterans Memorial"></div>
+      <div class="field"><label for="srPlace">Where is it?</label><input class="input" id="srPlace" name="place" required maxlength="200" placeholder="City, state or country"></div>
+      <div class="field"><label for="srLink">Website or source of names <span class="muted small">(optional)</span></label><input class="input" id="srLink" name="link" type="url" maxlength="500" placeholder="https://"></div>
+      <div class="field"><label for="srDetails">Anything else we should know <span class="muted small">(optional)</span></label><textarea class="input" id="srDetails" name="details" rows="3" maxlength="2000" placeholder="Why it matters to you, how names are shown there, who looks after it"></textarea></div>
+      <div class="field"><label for="srWho">Your name <span class="muted small">(optional)</span></label><input class="input" id="srWho" name="requester" maxlength="120" value="${esc(u ? u.name || '' : '')}"></div>
+      <div class="field"><label for="srEmail">Email, if you'd like to hear back <span class="muted small">(optional, seen only by admins)</span></label><input class="input" id="srEmail" name="email" type="email" maxlength="200" value="${esc(u ? u.email || '' : '')}"></div>
+      <button class="btn btn-primary" type="submit">Send request</button>
+    </form></div>`);
+  $('#srForm').onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target), v = k => String(f.get(k) || '').trim();
+    if (v('name').length < 2 || !v('place')) return toast('Add the name and where it is');
+    const btn = e.target.querySelector('button'); btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      await api.addSiteRequest({ name: v('name'), place: v('place'), link: v('link'), details: v('details'), requester: v('requester'), email: v('email') });
+      set(`<header class="topbar">${backBtn('Back')}</header><div class="pad"><div class="kicker">Thank you</div><h1 class="display" style="font-size:30px">Request sent</h1><p class="muted">We'll look into adding ${esc(v('name'))}.</p><div class="btnrow"><a class="btn btn-primary" href="#/welcome">Back to the start</a></div></div>`);
+    } catch (err) { console.warn(err); btn.disabled = false; btn.textContent = 'Send request'; toast('Could not send: ' + (err.code || err.message)); }
+  };
 }
 
 // ---------- scan ----------
@@ -556,10 +586,10 @@ function viewRegister(params) {
   const sel = (k, label) => `<select class="input" data-f="${k}"><option value="">${label}: All</option>${k === 'cemetery' ? cemGroups().map(([g, names]) => `<optgroup label="${esc(g)}">${names.map(v => opt(k, v)).join('')}</optgroup>`).join('') : FILTER_OPTS[k].map(v => opt(k, v)).join('')}</select>`;
   set(`<div class="pad" style="padding-bottom:0">
       <h1 class="display" style="margin-top:12px">Register</h1>
-      <div class="muted small">${esc(reg.cemetery || FILTER_OPTS.cemetery.length + ' cemeteries')}</div>
+      <div class="muted small">${esc(reg.cemetery || FILTER_OPTS.cemetery.length + ' cemeteries and memorials')}</div>
       <div class="searchbox">${ICON.search.replace(/23/g, '17')}<input class="input" id="q" type="search" value="${esc(reg.q)}" placeholder="Surname, or a memorial ID" autocomplete="off" autocapitalize="none"></div>
     </div>
-    <div class="filters">${sel('cemetery', 'Cemetery')}${sel('conflict', 'Conflict')}${sel('branch', 'Branch')}${sel('status', 'Status')}</div>
+    <div class="filters">${sel('cemetery', 'Cemetery or memorial')}${sel('conflict', 'Conflict')}${sel('branch', 'Branch')}${sel('status', 'Status')}</div>
     <div class="listhead"><span id="count"></span><button class="linkbtn" id="sort"></button></div>
     <div id="list" class="list"><p class="loading">Searching…</p></div>`);
   let seq = 0, t;
@@ -743,7 +773,8 @@ async function viewRecords(id) {
     ['ABMC burial search', 'Overseas cemeteries including Normandy: unit, service no., plot, awards.', 'https://www.abmc.gov/'],
     ['NARA Access to Archival Databases', 'WWII Army Enlistment Records and more.', 'https://aad.archives.gov/aad/'],
     ['NPRC personnel records (OMPF)', 'Archival files are open to the public 62 years after separation.', 'https://www.archives.gov/personnel-records-center'],
-    ['VA Nationwide Gravesite Locator', 'Cross-check national cemetery burials.', 'https://gravelocator.cem.va.gov/']
+    ['VA Nationwide Gravesite Locator', 'Cross-check national cemetery burials.', 'https://gravelocator.cem.va.gov/'],
+    ['VVMF Wall of Faces', 'Photos and remembrances for every name on the Vietnam Veterans Memorial.', 'https://www.vvmf.org/Wall-of-Faces/']
   ];
   set(`<header class="topbar">${backBtn('Memorial')}</header><div class="pad">
     <div class="kicker">Public records</div><h1 class="display" style="font-size:32px">Service record</h1>
@@ -784,7 +815,7 @@ const FIELDS = [
   ['birthplace', 'Birthplace'], ['enteredFrom', 'Entered service from'], ['conflict', 'Conflict'],
   ['photoUrl', 'Headstone photo URL', 'url'], ['biography', 'Biography', 'textarea'], ['sources', 'Sources (one per line)', 'lines'],
   ['awards', 'Awards (one per line)', 'lines'], ['inscription', 'Inscription (one line per row)', 'lines'], ['mediaUrls', 'Contributed media URLs (one per line)', 'lines'],
-  ['cemetery', 'Cemetery'], ['cemeteryKey', 'Cemetery key (e.g. normandy, arlington; see js/cemeteries.js)'], ['location', 'Burial location (display)'], ['section', 'Section or plot'], ['row', 'Row'], ['site', 'Site or grave'],
+  ['cemetery', 'Cemetery or memorial'], ['cemeteryKey', 'Site key (e.g. normandy, arlington, vietnam-veterans-memorial; see js/cemeteries.js)'], ['location', 'Location (display), e.g. a grave or a panel and line'], ['section', 'Section or plot'], ['row', 'Row'], ['site', 'Site or grave'],
   ['geo.lat', 'Latitude', 'number'], ['geo.lng', 'Longitude', 'number'],
   ['record.source', 'Record source'], ['record.externalId', 'Record ID'], ['record.url', 'Record URL', 'url'], ['record.status', 'Record status', 'select:linked,possible,none'],
   ['status', 'Register status', 'select:verified,needs_review,unmatched']
@@ -937,7 +968,7 @@ const adm = { q: '', status: '', cemetery: '', page: 0, sel: {} };
 async function viewAdmin(tab, params) {
   if (!isEditor()) return needAuth('Admin access required');
   if (!isAdmin() && !['listing', 'review', 'remembrances'].includes(tab)) tab = 'listing';
-  const tabs = [['listing', 'Listing'], ['review', 'Review queue'], ['remembrances', 'Remembrances']].concat(isAdmin() ? [['users', 'Users'], ['data', 'Data & QR'], ['activity', 'Activity log']] : []);
+  const tabs = [['listing', 'Listing'], ['review', 'Review queue'], ['remembrances', 'Remembrances']].concat(isAdmin() ? [['users', 'Users'], ['data', 'Data & QR'], ['sites', 'Site requests'], ['activity', 'Activity log']] : []);
   const head = `<div class="pad" style="padding-bottom:6px"><div class="kicker">Honor and Respect</div><h1 class="display" style="font-size:32px">Administration</h1>${api.demo ? '<div class="small muted">Demo mode. Changes are stored in this browser only.</div>' : ''}</div><nav class="admin-tabs">${tabs.map(([k, l]) => `<a href="#/admin/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>`;
   set(head + '<div id="adm" class="loading">Loading…</div>');
   const box = $('#adm');
@@ -945,11 +976,11 @@ async function viewAdmin(tab, params) {
     const total = await api.count().catch(() => null);
     box.className = '';
     box.innerHTML = `<div class="toolbar"><div class="searchbox" style="flex:1;min-width:220px;margin:0">${ICON.search.replace(/23/g, '17')}<input class="input" id="aq" type="search" value="${esc(adm.q)}" placeholder="Search ${total != null ? total.toLocaleString() + ' records ' : ''}by surname"></div>
-      <select class="input" id="acem" style="width:auto" aria-label="Cemetery"><option value="">All cemeteries</option>${cemGroups().map(([g, names]) => `<optgroup label="${esc(g)}">${names.map(n => `<option value="${esc(n)}" ${adm.cemetery === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <select class="input" id="acem" style="width:auto" aria-label="Cemetery or memorial"><option value="">All cemeteries and memorials</option>${cemGroups().map(([g, names]) => `<optgroup label="${esc(g)}">${names.map(n => `<option value="${esc(n)}" ${adm.cemetery === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select>
       <select class="input" id="ast" style="width:auto"><option value="">All statuses</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${adm.status === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>
       ${isAdmin() ? '<a class="btn btn-secondary" href="#/admin/new">+ New memorial</a><button class="btn btn-primary" id="printSel" disabled>Print QR for selected</button>' : ''}
       <a class="btn btn-ghost" href="#/register">Open public register</a></div>
-      <div class="table-wrap" id="tw"><table class="table"><thead><tr>${isAdmin() ? '<th><input type="checkbox" id="selAll" aria-label="Select page"></th>' : ''}<th>ID</th><th>Name</th><th>Rank</th><th>Cemetery</th><th>Location</th><th>Died</th><th>Status</th><th></th></tr></thead><tbody id="atb"></tbody></table></div>
+      <div class="table-wrap" id="tw"><table class="table"><thead><tr>${isAdmin() ? '<th><input type="checkbox" id="selAll" aria-label="Select page"></th>' : ''}<th>ID</th><th>Name</th><th>Rank</th><th>Cemetery / memorial</th><th>Location</th><th>Died</th><th>Status</th><th></th></tr></thead><tbody id="atb"></tbody></table></div>
       <div class="toolbar" id="pager"></div>`;
     const PER = 100;
     let cursors = [null], rows = [];
@@ -1000,6 +1031,33 @@ async function viewAdmin(tab, params) {
       const k = c.dataset.rset, on = e.target.checked, label = k === 'requireApproval' ? 'approval' : 'email confirmation';
       try { await api.setRemembranceSettings({ [k]: on }); toast(`Remembrance ${label} turned ${on ? 'on' : 'off'}`); api.log('settings.change', `Turned ${on ? 'on' : 'off'} ${label} for remembrances`, { actorName: user.name }).catch(() => { }); }
       catch (err) { e.target.checked = !on; toast('Update failed: ' + (err.code || err.message)); }
+    });
+  }
+  if (tab === 'sites') {
+    const SR = [['new', 'New'], ['planned', 'Planned'], ['added', 'Added'], ['declined', 'Declined']];
+    const f = SR.some(([k]) => k === (params && params.get && params.get('s'))) ? params.get('s') : '';
+    let all = [];
+    try { all = await api.siteRequests(); } catch (e) { box.className = 'pad'; box.innerHTML = `<p class="muted">Could not load requests: ${esc(e.code || e.message)}. If this is new, publish the updated Firestore rules.</p>`; return; }
+    const list = f ? all.filter(r => r.status === f) : all, cnt = k => all.filter(r => r.status === k).length;
+    box.className = 'pad';
+    box.innerHTML = `<p class="small muted">Requests from the “Request to add a cemetery or memorial” link on the welcome page. To add a site, put an entry in js/cemeteries.js, then mark the request Added.</p>
+      <div class="subtabs remb-filter">${[['', 'All', all.length], ...SR.map(([k, l]) => [k, l, cnt(k)])].map(([k, l, n]) => `<a href="#/admin/sites${k ? '?s=' + k : ''}" class="${f === k ? 'on' : ''}">${l} (${n})</a>`).join('')}</div>
+      ${list.length ? list.map(r => `<div class="remb-admin site-req">
+        <div class="card-title" style="font-size:19px">${esc(r.name)}</div>
+        <div class="small">${esc(r.place || '')}${r.link ? ` · <a href="${esc(/^https?:\/\//i.test(r.link) ? r.link : 'https://' + r.link)}" target="_blank" rel="noopener noreferrer">${esc(r.link)}</a>` : ''}</div>
+        ${r.details ? `<p class="small" style="margin:6px 0">${esc(r.details)}</p>` : ''}
+        <div class="small muted">From ${esc(r.requester || 'a visitor')}${r.email ? ` · <a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : ''} · ${new Date(r.createdAt).toLocaleDateString()}</div>
+        <div class="btnrow" style="justify-content:flex-start;align-items:center;margin-top:8px"><select class="input" data-srs="${esc(r.id)}" style="width:auto" aria-label="Status">${SR.map(([k, l]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="linkbtn" data-srdel="${esc(r.id)}">Delete</button></div>
+      </div>`).join('') : '<p class="muted">No requests yet.</p>'}`;
+    $$('[data-srs]').forEach(sel => sel.onchange = async e => {
+      const r = all.find(x => x.id === sel.dataset.srs), st = e.target.value;
+      try { await api.updateSiteRequest(r.id, { status: st }, user); toast('Marked ' + st); api.log('site-request.status', `Marked the request for ${r.name} as ${st}`, { actorName: user.name, targetId: r.id }).catch(() => { }); }
+      catch (err) { toast('Update failed: ' + (err.code || err.message)); viewAdmin('sites', params); }
+    });
+    $$('[data-srdel]').forEach(b => b.onclick = async () => {
+      const r = all.find(x => x.id === b.dataset.srdel);
+      try { await api.deleteSiteRequest(r.id); toast('Request deleted'); api.log('site-request.delete', `Deleted the request for ${r.name}`, { actorName: user.name, targetId: r.id }).catch(() => { }); viewAdmin('sites', params); }
+      catch (err) { toast('Delete failed: ' + (err.code || err.message)); }
     });
   }
   if (tab === 'activity') {
