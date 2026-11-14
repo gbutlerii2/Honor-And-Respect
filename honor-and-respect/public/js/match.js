@@ -71,7 +71,8 @@ export function nameSegments(text) {
 function rankNames(text, memorials, limit) {
   const segs = nameSegments(text).map(T => {
     const toks = T.split(' ').filter(Boolean);
-    return { set: new Set(toks), fuzzy: withJoins(toks).filter(t => t.length >= 3).map(fold) };
+    const joined = withJoins(toks); // "ABREU BATISTA" also counts as ABREUBATISTA (hyphenated surnames)
+    return { set: new Set(joined), fuzzy: joined.filter(t => t.length >= 3).map(fold) };
   });
   if (!segs.length) return [];
   const near = (seg, w) => { if (w.length < 4) return false; const f = fold(w); return seg.fuzzy.some(t => Math.abs(t.length - f.length) <= 2 && lev(t, f) <= (f.length > 6 ? 2 : 1)); };
@@ -104,7 +105,9 @@ export function ocrTokens(text, max = 10) {
     const a = all[i], b = all[i + 1], j = a + b;
     if (/^[A-Z]{5,}$/.test(j) && (a.length <= 3 || b.length <= 3) && !STOP.has(a) && !STOP.has(b)) joins.push(j);
   }
-  return [...new Set([...words, ...joins])].slice(0, max);
+  // Hyphenated surnames ("ABREU-BATISTA") are stored without the hyphen.
+  const hyph = (String(text || '').toUpperCase().match(/[A-Z]{2,}-[A-Z]{2,}/g) || []).map(w => w.replace('-', ''));
+  return [...new Set([...hyph, ...words, ...joins])].slice(0, max);
 }
 
 export function guessSurname(text) {

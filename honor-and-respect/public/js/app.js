@@ -396,7 +396,7 @@ async function startLive() {
         lt.innerHTML = `<span class="kicker light">Reading…</span>${lines.map(l => `<div class="ll">${esc(l)}</div>`).join('')}`;
         // Headstone mode wants one clear winner. Name mode can see several names on a wall at once,
         // so it settles when the same set of confident names is read twice in a row and lists them.
-        const ranked = rankFor(combined, scoped(await api.candidates(combined)), 5).filter(x => x.score >= MATCH_AT());
+        const ranked = rankFor(combined, scoped(await api.candidates(combined, cemName())), 5).filter(x => x.score >= MATCH_AT());
         const hits = nameMode() ? ranked : ranked.slice(0, 1);
         const key = hits.map(x => x.m.id).sort().join('|');
         if (key) { streak = key === lastTop ? streak + 1 : 1; lastTop = key; } else { streak = 0; lastTop = null; }
@@ -482,7 +482,7 @@ async function readStone(img, r) {
   const out = $('#ocr');
   const msg = t => { out.innerHTML = `<div class="kicker">${nameMode() ? 'Reading name' : 'Reading inscription'}</div><div class="progress indet"><div></div></div><p class="muted small">${t}</p>`; };
   msg('Loading text recognition…');
-  const best = async text => { const top = rankFor(text, scoped(await api.candidates(text)), 1)[0]; return top ? top.score : 0; };
+  const best = async text => { const top = rankFor(text, scoped(await api.candidates(text, cemName())), 1)[0]; return top ? top.score : 0; };
   try {
     const w = await getWorker();
     msg('Reading…');
@@ -516,7 +516,7 @@ function showCandidates(text) {
 }
 async function rerank() {
   const text = $('#ocrText')?.value || '';
-  const list = rankFor(text, scoped(await api.candidates(text)));
+  const list = rankFor(text, scoped(await api.candidates(text, cemName())));
   const g = guessSurname(text);
   if ($('#searchInstead')) $('#searchInstead').href = '#/register' + (g ? '?q=' + encodeURIComponent(g) : '');
   $('#cands').innerHTML = list.length ? list.map((c, i) => {

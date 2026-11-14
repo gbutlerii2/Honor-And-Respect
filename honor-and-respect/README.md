@@ -206,22 +206,22 @@ node import-abmc.mjs upload                        # the rest
 
 **What each record gets:** name, rank, branch, unit and division, service number, state entered service from, war, cemetery, plot/row/grave (or "Tablets of the Missing" with `missing: true`), date of death, awards, and the ABMC citation. IDs look like `ABMC-<ABMC record id>`, so re-running keeps QR plaques stable and keeps anything added in the app.
 
-## Importing the Vietnam Veterans Memorial names
-`scripts/import-vvmf.mjs` reads the Vietnam Veterans Memorial Fund's **Wall of Faces** profiles (https://www.vvmf.org/Wall-of-Faces/). Each profile gives the name as engraved, the full name, **panel and line** (e.g. 22E/29), dates of birth and casualty, home of record, branch and rank. Records keep only those facts plus a link back to the person's Wall of Faces profile (the memorial page's service record link); photos and remembrances stay on VVMF's site.
+## Importing the Vietnam Veterans Memorial names (58,220)
+`scripts/import-vietnam.mjs` loads every name on The Wall from the National Archives' **Vietnam Conflict Extract Data File** (Defense Casualty Analysis System, as of April 29, 2008, NAID 2240992, https://catalog.archives.gov/id/2240992). The Archives marks it "Use: Unrestricted". The file gives each name's **panel and line** on The Wall (`63W 014`), plus rank, branch, unit, hometown, dates of birth and casualty, and casualty province. The file's first column (service number, often a Social Security number) is never read into the app.
 
-**Before running it:** VVMF publishes no terms of use for the Wall of Faces (only a privacy statement), and its robots.txt marks content as `use=reference`. Ask VVMF for permission, and ideally for a names file with panel/line, before a full pull. A profile only opens with the name in its URL (`/Wall-of-Faces/9239/JERRY-F-CLARK/`), and the site's search doesn't page through every name, so the script starts from a list of profile URLs in `scripts/data/vvmf/urls.txt`. vvmf.org can't be reached from the cloud machines, so run it on your computer.
+catalog.archives.gov can't be reached from the cloud machines, so run it on your computer:
 
 ```
 cd honor-and-respect/scripts
-node import-vvmf.mjs probe                 # reads one profile and shows the memorial it would make
-node import-vvmf.mjs fetch --limit 20      # try a few from data/vvmf/urls.txt
-node import-vvmf.mjs fetch                 # the rest: one request about every 2 seconds, resumes where it stopped
-node import-vvmf.mjs convert               # builds data/vvmf/memorials.ndjson
-node import-vvmf.mjs upload --limit 200    # test a small batch, check it in the app
-node import-vvmf.mjs upload
+node import-vietnam.mjs download            # 24 MB, one request → data/vietnam/DCAS.VN.EXT08.DAT
+node import-vietnam.mjs convert             # builds data/vietnam/memorials.ndjson
+node import-vietnam.mjs upload --limit 200  # test a small batch, check it in the app
+node import-vietnam.mjs upload              # the rest (a few minutes)
 ```
 
-IDs look like `VVM-<Wall of Faces id>`, `cemeteryKey` is `vietnam-veterans-memorial` and `location` reads `Panel 22E · Line 29` (`section` = panel, `row` = line). The National Archives' Vietnam casualty file (DCAS extract, 58,220 records) has the names and dates but no panel/line.
+If the download is refused, open the catalog page in a browser, download **DCAS.VN.EXT08.DAT**, and save it in `scripts/data/vietnam/`.
+
+IDs are built from the Wall location and name, e.g. `VVM-63W-14-AADLAND-GL`, so re-running keeps QR codes and anything added in the app. `cemeteryKey` is `vietnam-veterans-memorial`, `location` reads `Panel 63W · Line 14` (`section` = panel, `row` = line), and `wallName` holds the name as engraved (`GERALD L AADLAND`). Each record's service-record link opens a search for that name on the VVMF Wall of Faces (https://www.vvmf.org/Wall-of-Faces/), which has photos and remembrances; nothing is copied from VVMF.
 
 ## Before scaling to the full register (~400,000 records)
 Search now runs in the database rather than on the phone. The register searches by surname prefix with filters, scans look up only the surnames read from the stone, and the admin listing pages through 100 records at a time. That works for the full Arlington import. For typo-tolerant full-text search later (e.g. finding "Haskens" when someone types "Haskins"), add Algolia or Typesense, both available as Firebase extensions.

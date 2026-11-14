@@ -149,20 +149,24 @@ export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
       return { items: s.docs.map(d => ({ id: d.id, ...d.data() })) };
     },
     // Pull only records whose surname matches words read from the stone.
-    async candidates(text) {
+    // cemetery (optional): only that site's records, so a common surname (SMITH) at a large
+    // site isn't crowded out by the same surname elsewhere in the register.
+    async candidates(text, cemetery) {
       this._tok = this._tok || new Map();
       const out = new Map();
+      const at = cemetery ? [fs.where('cemetery', '==', cemetery)] : [];
       for (const t of ocrTokens(text)) {
-        if (!this._tok.has(t)) {
-          const exact = fs.getDocs(fs.query(M(), fs.where('surnameKey', '==', t), fs.limit(500)));
+        const ck = (cemetery || '') + '|' + t;
+        if (!this._tok.has(ck)) {
+          const exact = fs.getDocs(fs.query(M(), ...at, fs.where('surnameKey', '==', t), fs.limit(500)));
           // Prefix search for misreads; a first letter OCR often swaps (C/G, O/Q) is tried both ways.
           const p = t.slice(0, 4), alt = { C: 'G', G: 'C', O: 'Q', Q: 'O' }[p[0]];
-          const pre = q => fs.getDocs(fs.query(M(), fs.where('surnameKey', '>=', q), fs.where('surnameKey', '<=', q + '\uf8ff'), fs.orderBy('surnameKey'), fs.limit(150)));
+          const pre = q => fs.getDocs(fs.query(M(), ...at, fs.where('surnameKey', '>=', q), fs.where('surnameKey', '<=', q + '\uf8ff'), fs.orderBy('surnameKey'), fs.limit(150)));
           const near = t.length >= 5 ? [pre(p), ...(alt ? [pre(alt + p.slice(1))] : [])] : [];
           const res = await Promise.all([exact, ...near]);
-          this._tok.set(t, res.flatMap(r => r.docs).map(d => ({ id: d.id, ...d.data() })));
+          this._tok.set(ck, res.flatMap(r => r.docs).map(d => ({ id: d.id, ...d.data() })));
         }
-        this._tok.get(t).forEach(m => out.set(m.id, m));
+        this._tok.get(ck).forEach(m => out.set(m.id, m));
       }
       return [...out.values()];
     },

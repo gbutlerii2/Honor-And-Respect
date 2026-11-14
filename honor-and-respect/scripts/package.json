@@ -13,10 +13,9 @@
     "abmc:details": "node import-abmc.mjs details",
     "abmc:convert": "node import-abmc.mjs convert",
     "abmc:upload": "node import-abmc.mjs upload",
-    "vvmf:probe": "node import-vvmf.mjs probe",
-    "vvmf:fetch": "node import-vvmf.mjs fetch",
-    "vvmf:convert": "node import-vvmf.mjs convert",
-    "vvmf:upload": "node import-vvmf.mjs upload"
+    "vietnam:download": "node import-vietnam.mjs download",
+    "vietnam:convert": "node import-vietnam.mjs convert",
+    "vietnam:upload": "node import-vietnam.mjs upload"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
