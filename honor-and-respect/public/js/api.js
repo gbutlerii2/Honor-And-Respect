@@ -70,7 +70,7 @@ export class LocalAPI {
   async _users() { const u = this._get('user', null); return [{ uid: 'demo', email: u?.email || 'demo@example.org', displayName: u?.name || 'Demo user', role: u?.role || 'contributor', requestedRole: u?.requestedRole || '' }, { uid: 'k-osei', email: 'k.osei@example.org', displayName: 'K. Osei', role: 'contributor', requestedRole: 'editor', requestReason: 'Unit association historian, 116th Infantry.' }]; }
   async setRole(uid, role) { const ex = this._get('extraUsers', []); const e = ex.find(x => x.uid === uid); if (e) { e.role = role; this._set('extraUsers', ex); } if (uid === 'demo') { const u = this._get('user', {}); this._set('user', { ...u, role }); } }
   async requestRole(uid, data) { const u = this._get('user', {}); this._set('user', { ...u, requestedRole: 'editor', ...data }); }
-  async seed(records) { const all = await this.listMemorials(); const byId = Object.fromEntries(all.map(m => [m.id, m])); records.forEach(r => { byId[r.id] = { ...(byId[r.id] || {}), ...clean(r), searchName: searchName(r) }; }); this._set('memorials', Object.values(byId)); return records.length; }
+  async seed(records) { const all = await this.listMemorials(); const byId = Object.fromEntries(all.map(m => [m.id, m])); records.forEach(r => { const m = { ...(byId[r.id] || {}), ...clean(r) }; byId[r.id] = { ...m, searchName: searchName(m) }; }); this._set('memorials', Object.values(byId)); return records.length; }
   async markQR() { }
   // remembrances & stories (email kept apart from the public post)
   async remembranceSettings() { return { requireApproval: false, requireEmailConfirmation: false, ...this._get('settings-remembrances', {}) }; }
@@ -261,7 +261,11 @@ export async function makeFireAPI(config, { recaptchaSiteKey = '' } = {}) {
       let n = 0;
       for (let i = 0; i < records.length; i += 400) {
         const b = fs.writeBatch(db);
-        records.slice(i, i + 400).forEach(r => { const d = clean(r); const id = String(d.id); delete d.id; d.searchName = searchName({ ...d, id }); d.surnameKey = surnameKey(d); b.set(fs.doc(db, 'memorials', id), d, { merge: true }); n++; });
+        records.slice(i, i + 400).forEach(r => {
+          const d = clean(r); const id = String(d.id); delete d.id;
+          // A partial update (e.g. only a record link) must not overwrite the search fields built from the name.
+          if ('surname' in d || 'fullName' in d) { d.searchName = searchName({ ...d, id }); d.surnameKey = surnameKey(d); }
+          b.set(fs.doc(db, 'memorials', id), d, { merge: true }); n++; });
         await b.commit();
       }
       cache = null; return n;

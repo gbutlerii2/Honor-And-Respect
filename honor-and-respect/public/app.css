@@ -66,7 +66,12 @@ body.dark #ocr:not(:empty) { background: var(--color-bg); }
 .reticle { position: absolute; inset: 20% 16%; border: 2px solid var(--color-accent-400); border-radius: 6px; pointer-events: none; z-index: 1; }
 .reticle.stone-ret { inset: 10% 12%; border-radius: 40% 40% 6px 6px / 22% 22% 6px 6px; }
 /* Name mode: a one-line band for a single engraved name (memorial walls, tablets of the missing). */
-.reticle.name-ret { inset: 36% 6%; border-radius: 4px; }
+.reticle.name-ret { inset: 44% 3%; border-radius: 3px; }
+.finder video { transform-origin: center; transition: transform .08s linear; }
+.finder.live { touch-action: none; }
+.zoom-row { display: flex; align-items: center; gap: 10px; margin: 10px 4px 0; color: var(--color-neutral-300); font-size: 15px; }
+.zoom-row input { flex: 1; accent-color: var(--color-accent-400); }
+.zoom-row .zoom-val { min-width: 3em; text-align: right; font-size: 13px; }
 .finder-empty.below { align-self: end; padding-bottom: 14px; }
 .finder.live .reticle { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { border-color: color-mix(in srgb, var(--color-accent-400) 40%, transparent); } }

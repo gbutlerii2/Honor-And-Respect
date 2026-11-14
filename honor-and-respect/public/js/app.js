@@ -270,6 +270,7 @@ function viewScan() {
     <div class="cem-bar"><span class="cem-name">${esc(cemName())}</span><button class="cem-change" id="cemChange" type="button">change</button></div>
     ${ocr ? `
       <div class="finder" id="finder"><video id="vid" playsinline muted></video><div class="reticle ${nameMode() ? 'name-ret' : 'stone-ret'}"></div><div class="finder-empty${nameMode() ? ' below' : ''}" id="liveIdle">${nameMode() ? '' : ICON.scan}<p>${idle}</p></div><div class="live-text" id="liveText" hidden></div><div class="live-match" id="liveMatch" hidden></div></div>
+      <div class="zoom-row" id="zoomRow" hidden><span aria-hidden="true">−</span><input type="range" id="zoom" min="1" max="4" step="0.1" value="1" aria-label="Zoom"><span aria-hidden="true">+</span><span class="zoom-val" id="zoomVal">1×</span></div>
       <div class="scan-actions"><button class="btn btn-light" id="startLive">${ICON.scan.replace(/23/g, '18')}Start live scan</button></div>
       <div class="searchbox scan-search">${ICON.search.replace(/23/g, '17')}<input class="input" id="nameQ" type="search" placeholder="Or search for a name" autocomplete="off" autocapitalize="words" enterkeyhint="search" aria-label="Search for a name"></div>
       <div class="scan-results" id="nameResults" hidden></div>
@@ -372,6 +373,32 @@ async function startLive() {
   btn.onclick = () => { stopCamera(); viewScan(); };
   lt.innerHTML = '<span class="kicker light">Hold steady…</span>';
   $('#finder').classList.add('live');
+  // Zoom: the camera's own zoom where the phone supports it, otherwise a digital zoom of the
+  // picture. Either way the window and the guide stay the same size; pinch or use the slider.
+  const track = stream.getVideoTracks()[0];
+  const caps = (track.getCapabilities && track.getCapabilities()) || {};
+  const hw = caps.zoom && caps.zoom.max > caps.zoom.min ? caps.zoom : null;
+  let zoom = 1;
+  const zr = $('#zoom'), zv = $('#zoomVal'), fin = $('#finder');
+  if (hw) { zr.min = hw.min; zr.max = Math.min(hw.max, 8); zr.step = hw.step || 0.1; zr.value = hw.min; }
+  $('#zoomRow').hidden = false;
+  const setZoom = z => {
+    z = Math.min(+zr.max, Math.max(+zr.min, z)); zr.value = z; zv.textContent = (Math.round(z * 10) / 10) + '×';
+    if (hw) { zoom = 1; track.applyConstraints({ advanced: [{ zoom: z }] }).catch(() => { }); }
+    else { zoom = z; v.style.transform = z > 1 ? `scale(${z})` : ''; }
+  };
+  zr.oninput = () => setZoom(+zr.value);
+  const pts = new Map(); let pinch0 = null;
+  fin.onpointerdown = e => { pts.set(e.pointerId, e); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), z: +zr.value }; } };
+  fin.onpointermove = e => { if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e); if (pinch0 && pts.size === 2) { const [a, b] = [...pts.values()]; setZoom(pinch0.z * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch0.d); } };
+  fin.onpointerup = fin.onpointercancel = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null; };
+  // The part of the camera frame inside the on-screen guide, allowing for object-fit: cover and digital zoom.
+  const guideRect = (vw, vh) => {
+    const F = fin.getBoundingClientRect(), G = $('.reticle', fin).getBoundingClientRect();
+    const k = Math.max(F.width / vw, F.height / vh) * zoom;
+    const x0 = (vw - F.width / k) / 2, y0 = (vh - F.height / k) / 2;
+    return [x0 + (G.left - F.left) / k, y0 + (G.top - F.top) / k, G.width / k, G.height / k];
+  };
   const started = Date.now();
   let lastTop = null, streak = 0, reads = [], frame = 0;
   const c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true });
@@ -381,8 +408,9 @@ async function startLive() {
     if (v.readyState >= 2 && v.videoWidth) {
       const vw = v.videoWidth, vh = v.videoHeight;
       // Read only what is inside the guide: the stone outline, or the one-line band in name mode.
-      const [sx, sy, sw, sh] = nameMode() ? [vw * 0.06, vh * 0.36, vw * 0.88, vh * 0.28] : [vw * 0.12, vh * 0.1, vw * 0.76, vh * 0.8];
-      const k = Math.min(1, 1200 / sw);
+      const [sx, sy, sw, sh] = guideRect(vw, vh);
+      // Enlarge a small crop (a thin band, or a zoomed-in frame) so letters are tall enough for OCR.
+      const k = Math.min(1200 / sw, Math.max(1, 90 / sh));
       c.width = Math.round(sw * k); c.height = Math.round(sh * k);
       x.filter = 'grayscale(1) contrast(1.5)';
       x.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
@@ -446,7 +474,7 @@ async function handlePhoto(file) {
   const box = $('#cropBox');
   let b;
   const place = () => { box.style.left = b.x + 'px'; box.style.top = b.y + 'px'; box.style.width = b.w + 'px'; box.style.height = b.h + 'px'; };
-  const reset = () => { const a = area(); b = nameMode() ? { x: a.x + a.w * 0.1, y: a.y + a.h * 0.42, w: a.w * 0.8, h: a.h * 0.16 } : { x: a.x + a.w * 0.08, y: a.y + a.h * 0.3, w: a.w * 0.84, h: a.h * 0.28 }; place(); };
+  const reset = () => { const a = area(); b = nameMode() ? { x: a.x + a.w * 0.04, y: a.y + a.h * 0.45, w: a.w * 0.92, h: a.h * 0.1 } : { x: a.x + a.w * 0.08, y: a.y + a.h * 0.3, w: a.w * 0.84, h: a.h * 0.28 }; place(); };
   reset();
   const ro = new ResizeObserver(reset); ro.observe(fin);
   box.onpointerdown = e => {
@@ -1103,12 +1131,22 @@ async function viewAdmin(tab, params) {
       <div class="card"><div class="card-title">Rebuild search keys</div><p class="card-body">Run once after updating, and after any import that didn’t go through the app or the import script. Records missing search keys don’t appear in the Register or scan results.</p><button class="btn btn-primary" id="rekey">Rebuild search keys</button><div class="small muted" id="rekeyMsg"></div></div>
       <div class="card"><div class="card-title">Remove sample data</div><p class="card-body">Deletes only the fictional test records. Real and imported records are untouched. You can load them again at any time.</p><button class="btn btn-secondary" id="unseed">Remove sample data</button></div>
       <div class="card"><div class="card-title">Print test kit</div><p class="card-body">Printable test headstones for OCR, plus QR plaques for every sample record. QR codes point to <strong>${esc(qrBase())}</strong>.</p><a class="btn btn-primary" href="print.html?base=${encodeURIComponent(qrBase())}" target="_blank" rel="noopener">Open print kit</a></div>
-      <div class="card"><div class="card-title">Import Vietnam Veterans Memorial names</div><p class="card-body">All 58,220 names on The Wall with panel and line, from the National Archives. 1. Download <strong>DCAS.VN.EXT08.DAT</strong> (24 MB) from the <a href="${DCAS_PAGE}" target="_blank" rel="noopener">National Archives catalog page</a>. 2. Choose it here. It is read in this browser and written to the register in batches; keep this page open until it finishes (a few minutes). If it stops, choose the file again and it carries on.</p><label class="btn btn-primary">Choose DCAS file<input type="file" accept=".dat,.DAT,.txt,text/plain" id="vvmFile" hidden></label><div class="small muted" id="vvmMsg"></div></div>
+      <div class="card"><div class="card-title">Import Vietnam Veterans Memorial names</div><p class="card-body">All 58,220 names on The Wall with panel and line, from the National Archives. 1. Download <strong>DCAS.VN.EXT08.DAT</strong> (24 MB) from the <a href="${DCAS_PAGE}" target="_blank" rel="noopener">National Archives catalog page</a>. 2. Choose it here. It is read in this browser and written to the register in batches; keep this page open until it finishes (a few minutes). If it stops, choose the file again and it carries on.</p><p class="card-body small">Have the Wall of Faces links file (<strong>vvmf-wall-of-faces-links.json</strong>)? Add it first and each name links straight to its Wall of Faces page in the same write. If the names are already imported, load the links file with Import JSON below instead.</p><div class="btnrow" style="justify-content:flex-start"><label class="btn btn-secondary">Add links file (optional)<input type="file" accept=".json,application/json" id="vvmLinks" hidden></label><label class="btn btn-primary">Choose DCAS file<input type="file" accept=".dat,.DAT,.txt,text/plain" id="vvmFile" hidden></label></div><div class="small muted" id="vvmMsg"></div></div>
       <div class="card"><div class="card-title">Import JSON</div><p class="card-body">An array of memorial objects. Each needs an <code>id</code>; other fields follow the schema in the README. Existing IDs are merged.</p><label class="btn btn-secondary">Choose file<input type="file" accept=".json,application/json" id="imp" hidden></label></div>
       <div class="card"><div class="card-title">Export</div><p class="card-body">Download every memorial as JSON for backup or bulk editing.</p><button class="btn btn-secondary" id="exp">Download JSON</button></div></div>`;
     $('#seed').onclick = async () => { if (!confirm(`Write ${SAMPLE.length} sample records?`)) return; try { const n = await api.seed(SAMPLE); toast(n + ' sample records loaded'); } catch (e) { toast('Seed failed: ' + (e.code || e.message)); } };
     $('#rekey').onclick = async () => { const b = $('#rekey'); b.disabled = true; try { const r = await api.rebuildKeys((s, f) => { $('#rekeyMsg').textContent = `Checked ${s.toLocaleString()} · updated ${f.toLocaleString()}`; }); $('#rekeyMsg').textContent = `Done. Checked ${r.seen.toLocaleString()}, updated ${r.fixed.toLocaleString()}.`; toast('Search keys rebuilt'); } catch (e) { toast('Rebuild failed: ' + (e.code || e.message)); } b.disabled = false; };
     $('#unseed').onclick = async () => { if (!confirm('Delete all sample records?')) return; try { const n = await api.removeSample(); toast(n ? n + ' sample records removed' : 'No sample records found'); } catch (e) { toast('Remove failed: ' + (e.code || e.message)); } };
+    let vvmLinks = null;
+    $('#vvmLinks').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try {
+        const arr = JSON.parse(await f.text());
+        vvmLinks = new Map(arr.filter(x => x && x.id && x.record && x.record.url).map(x => [x.id, x.record]));
+        $('#vvmMsg').textContent = `${vvmLinks.size.toLocaleString()} Wall of Faces links ready. Now choose the DCAS file.`;
+      } catch (err) { vvmLinks = null; toast('Could not read the links file: ' + err.message); }
+      finally { e.target.value = ''; }
+    };
     $('#vvmFile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       const msg = t => { $('#vvmMsg').textContent = t; };
@@ -1116,6 +1154,7 @@ async function viewAdmin(tab, params) {
         msg('Reading the file…');
         const list = convertDCAS(new TextDecoder('latin1').decode(await f.arrayBuffer()), new Date().toISOString().slice(0, 10));
         if (list.length < 1000) throw new Error(`Only ${list.length} names found. Is this DCAS.VN.EXT08.DAT?`);
+        if (vvmLinks) list.forEach(m => { const l = vvmLinks.get(m.id); if (l) m.record = { ...m.record, ...l }; });
         const KEY = 'har-vvm-import';
         let prog = {}; try { prog = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { }
         let done = prog.total === list.length && prog.done < list.length ? prog.done : 0;
