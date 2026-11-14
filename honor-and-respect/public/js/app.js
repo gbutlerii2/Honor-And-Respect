@@ -1,6 +1,7 @@
 import { firebaseConfig, SITE_URL, ENABLE_GOOGLE_SIGNIN, OWNER_EMAIL, USERNAME_DOMAIN, RECAPTCHA_SITE_KEY } from './firebase-config.js';
 const toEmail = s => { s = String(s || '').trim().toLowerCase(); return s.includes('@') ? s : `${s}@${USERNAME_DOMAIN}`; };
 import { SAMPLE, CEMETERIES, STATUS, view } from './data.js';
+import { convertDCAS, DCAS_PAGE } from './vietnam.js';
 import { US, cemCountries, cemStates, cemIn, cemGroups, scanModes, isMemorial, SCAN_MODES } from './cemeteries.js';
 import { rankCandidates, guessSurname } from './match.js';
 import { LocalAPI, makeFireAPI } from './api.js';
@@ -1102,11 +1103,36 @@ async function viewAdmin(tab, params) {
       <div class="card"><div class="card-title">Rebuild search keys</div><p class="card-body">Run once after updating, and after any import that didn’t go through the app or the import script. Records missing search keys don’t appear in the Register or scan results.</p><button class="btn btn-primary" id="rekey">Rebuild search keys</button><div class="small muted" id="rekeyMsg"></div></div>
       <div class="card"><div class="card-title">Remove sample data</div><p class="card-body">Deletes only the fictional test records. Real and imported records are untouched. You can load them again at any time.</p><button class="btn btn-secondary" id="unseed">Remove sample data</button></div>
       <div class="card"><div class="card-title">Print test kit</div><p class="card-body">Printable test headstones for OCR, plus QR plaques for every sample record. QR codes point to <strong>${esc(qrBase())}</strong>.</p><a class="btn btn-primary" href="print.html?base=${encodeURIComponent(qrBase())}" target="_blank" rel="noopener">Open print kit</a></div>
+      <div class="card"><div class="card-title">Import Vietnam Veterans Memorial names</div><p class="card-body">All 58,220 names on The Wall with panel and line, from the National Archives. 1. Download <strong>DCAS.VN.EXT08.DAT</strong> (24 MB) from the <a href="${DCAS_PAGE}" target="_blank" rel="noopener">National Archives catalog page</a>. 2. Choose it here. It is read in this browser and written to the register in batches; keep this page open until it finishes (a few minutes). If it stops, choose the file again and it carries on.</p><label class="btn btn-primary">Choose DCAS file<input type="file" accept=".dat,.DAT,.txt,text/plain" id="vvmFile" hidden></label><div class="small muted" id="vvmMsg"></div></div>
       <div class="card"><div class="card-title">Import JSON</div><p class="card-body">An array of memorial objects. Each needs an <code>id</code>; other fields follow the schema in the README. Existing IDs are merged.</p><label class="btn btn-secondary">Choose file<input type="file" accept=".json,application/json" id="imp" hidden></label></div>
       <div class="card"><div class="card-title">Export</div><p class="card-body">Download every memorial as JSON for backup or bulk editing.</p><button class="btn btn-secondary" id="exp">Download JSON</button></div></div>`;
     $('#seed').onclick = async () => { if (!confirm(`Write ${SAMPLE.length} sample records?`)) return; try { const n = await api.seed(SAMPLE); toast(n + ' sample records loaded'); } catch (e) { toast('Seed failed: ' + (e.code || e.message)); } };
     $('#rekey').onclick = async () => { const b = $('#rekey'); b.disabled = true; try { const r = await api.rebuildKeys((s, f) => { $('#rekeyMsg').textContent = `Checked ${s.toLocaleString()} · updated ${f.toLocaleString()}`; }); $('#rekeyMsg').textContent = `Done. Checked ${r.seen.toLocaleString()}, updated ${r.fixed.toLocaleString()}.`; toast('Search keys rebuilt'); } catch (e) { toast('Rebuild failed: ' + (e.code || e.message)); } b.disabled = false; };
     $('#unseed').onclick = async () => { if (!confirm('Delete all sample records?')) return; try { const n = await api.removeSample(); toast(n ? n + ' sample records removed' : 'No sample records found'); } catch (e) { toast('Remove failed: ' + (e.code || e.message)); } };
+    $('#vvmFile').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const msg = t => { $('#vvmMsg').textContent = t; };
+      try {
+        msg('Reading the file…');
+        const list = convertDCAS(new TextDecoder('latin1').decode(await f.arrayBuffer()), new Date().toISOString().slice(0, 10));
+        if (list.length < 1000) throw new Error(`Only ${list.length} names found. Is this DCAS.VN.EXT08.DAT?`);
+        const KEY = 'har-vvm-import';
+        let prog = {}; try { prog = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { }
+        let done = prog.total === list.length && prog.done < list.length ? prog.done : 0;
+        if (!confirm(`${done ? `Carry on importing from name ${(done + 1).toLocaleString()} of` : 'Import'} ${list.length.toLocaleString()} Vietnam Veterans Memorial names?`)) return msg('');
+        e.target.disabled = true;
+        const CHUNK = 2000;
+        for (; done < list.length; done = Math.min(list.length, done + CHUNK)) {
+          msg(`Writing ${done.toLocaleString()} of ${list.length.toLocaleString()}…`);
+          await api.seed(list.slice(done, done + CHUNK));
+          try { localStorage.setItem(KEY, JSON.stringify({ total: list.length, done: Math.min(list.length, done + CHUNK) })); } catch { }
+        }
+        msg(`Done: ${list.length.toLocaleString()} names imported (${list.filter(m => !m.section).length} have no panel in the file).`);
+        toast('Vietnam names imported');
+        api.log('data.import', `Imported ${list.length.toLocaleString()} Vietnam Veterans Memorial names from the National Archives file`, { actorName: user.name }).catch(() => { });
+      } catch (err) { console.warn(err); msg('Stopped: ' + (err.code || err.message) + '. Choose the file again to carry on.'); }
+      finally { e.target.disabled = false; e.target.value = ''; }
+    };
     $('#imp').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const arr = JSON.parse(await f.text()); if (!Array.isArray(arr) || arr.some(r => !r.id)) throw new Error('Expected an array of objects with an id'); if (!confirm(`Import ${arr.length} records?`)) return; const n = await api.seed(arr); toast(n + ' records imported'); } catch (err) { toast('Import failed: ' + err.message); } };
     $('#exp').onclick = async () => { const n = await api.count().catch(() => 0); if (n > 20000) return toast('Too many records for a browser export. Use Firestore export in the Firebase console.'); const all = await api.listMemorials(true); const blob = new Blob([JSON.stringify(all.map(({ searchName, ...m }) => ({ ...m, updatedAt: m.updatedAt?.toMillis ? m.updatedAt.toMillis() : m.updatedAt })), null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'honor-and-respect-memorials.json'; a.click(); };
   }
